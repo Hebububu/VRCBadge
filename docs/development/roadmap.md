@@ -8,7 +8,7 @@ flowchart LR
     W2["Phase 2\nDev Env"]
     W3["Phase 3\nUI Frame"]
     W4["Phase 4\nAPI Build"]
-    W5["Phase 5\nPolish & Power"]
+    W5["Phase 5\nPCB & Power"]
     W6["Phase 6\nRFID"]
 
     W1 --> W2 --> W3 --> W4 --> W5 --> W6
@@ -17,32 +17,34 @@ flowchart LR
 ## Phase 1: Boot & Blink
 
 Initial hardware setup and verification:
-- Flash Raspberry Pi OS Lite (64-bit)
-- Assemble hardware stack
-- First boot, verify display works
-- Connect to WiFi
-- Enable SSH
+- Flash Raspberry Pi OS Lite (64-bit) onto microSD
+- Boot Pi Zero 2 W, connect to WiFi
+- Enable SSH and SPI interface (`raspi-config`)
+- Connect 3.5" SPI display via GPIO header
+- Install `fbtft` driver, verify display output
 - Verify touch input (`evtest`)
 
-**Milestone:** SSH into badge over WiFi
+**Milestone:** SSH into badge over WiFi, display showing framebuffer output
 
 ## Phase 2: Dev Environment
 
 Development workflow setup:
-- Set up cross-compilation on dev machine
+- Set up cross-compilation on dev machine (aarch64 target)
 - Create project structure
 - Build and deploy "Hello Badge" binary
-- Create deploy script
+- Create deploy script (SCP + SSH)
+- Verify Slint renders to SPI framebuffer (`/dev/fb1`)
+- If Slint is too heavy for 512MB, evaluate alternatives
 
-**Milestone:** Edit → Deploy → Run in <30 seconds
+**Milestone:** Edit -> Deploy -> Run in <30 seconds
 
 ## Phase 3: Display Framework
 
 UI implementation:
-- Set up Slint UI framework
-- Create basic badge layout
+- Set up Slint UI framework (or alternative if needed)
+- Create basic badge layout (480x320 resolution)
 - Display static avatar image
-- Display profile info
+- Display profile info (name, tagline, socials)
 - Implement touch interactions
 
 **Milestone:** Avatar and name displaying on badge
@@ -54,22 +56,22 @@ API and live updates:
 - POST /api/avatar endpoint
 - POST /api/profile endpoint
 - Connect API to UI state
-- Test from phone/PC
+- Test from phone/PC over WiFi
 
 **Milestone:** Upload avatar from phone, badge updates live
 
-## Phase 5: Polish & Power
+## Phase 5: PCB Design & Power Management
 
-Production readiness:
+Custom PCB and production readiness:
+- Design schematic in EasyEDA (charging, boost, connectors)
+- Layout PCB (~85x55mm, 2-layer)
+- Order from JLCPCB, assemble
+- Implement battery monitoring (ADC via SPI or I2C fuel gauge)
 - Systemd auto-start service
-- Battery monitoring via GPIO
-- Low power optimizations
-- Screen dimming on idle
-- Design acrylic enclosure
-- Laser cut and assemble
-- Add lanyard attachment
+- Low power optimizations (screen dimming, WiFi sleep)
+- Battery level display in UI
 
-**Milestone:** Wearable for full day
+**Milestone:** Self-contained wearable badge on custom PCB, full-day battery
 
 ## Phase 6: RFID Integration (Future)
 
@@ -77,7 +79,7 @@ Door key functionality:
 - Identify door lock frequency
 - Acquire Chameleon Tiny
 - Clone existing card to Chameleon
-- Implement serial communication
+- Implement serial communication via UART header on PCB
 - Add UI for card slot switching
 - Test with actual door
 

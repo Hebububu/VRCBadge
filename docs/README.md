@@ -5,9 +5,10 @@ A wearable digital badge with dynamic display, VRChat avatar sync, and future RF
 ## Documentation
 
 ### [Hardware](./hardware/)
-- [Overview](./hardware/overview.md) - CM4 selection, carrier boards, platform decisions
+- [Overview](./hardware/overview.md) - Pi Zero 2 W platform, 3.5" SPI display
 - [Shopping List](./hardware/shopping-list.md) - Components and estimated prices
 - [Assembly](./hardware/assembly.md) - Hardware stack diagram, weight/thermal/battery considerations
+- [PCB Design](./hardware/pcb-design.md) - Custom PCB via EasyEDA, schematic blocks, fabrication
 
 ### [Software](./software/)
 - [Architecture](./software/architecture.md) - Tech stack, system architecture diagram
@@ -26,5 +27,7 @@ A wearable digital badge with dynamic display, VRChat avatar sync, and future RF
 - [Slint Documentation](https://slint.dev/docs)
 - [rppal GPIO Library](https://github.com/golemparts/rppal)
 - [Axum Web Framework](https://github.com/tokio-rs/axum)
-- [CM4 Datasheet](https://www.raspberrypi.com/documentation/computers/compute-module.html)
+- [Pi Zero 2 W Datasheet](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#raspberry-pi-zero-2-w)
+- [EasyEDA PCB Design](https://easyeda.com)
+- [JLCPCB Fabrication](https://jlcpcb.com)
 - [Chameleon Tiny Wiki](https://github.com/RfidResearchGroup/ChameleonUltra)

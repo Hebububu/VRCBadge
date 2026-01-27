@@ -1,56 +1,87 @@
 # Hardware Overview
 
-## Chosen Platform: Raspberry Pi Compute Module 4 (CM4)
+<!-- TODO: Add photo of Pi Zero 2 W + display setup once assembled -->
+![Hardware Overview](../../images/hardware-overview-placeholder.png)
 
-### Why CM4?
+*Image pending — will be added after hardware is assembled.*
 
-- Same Pi ecosystem and community support
-- Modular design — choose carrier board with USB-C
-- More powerful than Zero 2 W
-- Full Linux compatibility
-- WiFi + Bluetooth available
+## Chosen Platform: Raspberry Pi Zero 2 W
 
-### CM4 Naming Convention
+### Why Pi Zero 2 W?
 
-```
-CM4 [RAM] [Wireless] [Storage]
+- Ultra-compact form factor (65mm x 30mm) — ideal for wearable badge
+- Built-in WiFi + Bluetooth
+- Quad-core ARM Cortex-A53 @ 1GHz (64-bit)
+- 512MB RAM — sufficient for badge UI and API server
+- Low power draw (~1.5-2W) — longer battery life than CM4
+- Same Pi ecosystem, community support, and `rppal` compatibility
+- 40-pin GPIO header — direct SPI for display, GPIO for power monitoring
+- No carrier board needed — solders directly onto custom PCB
+- Significantly cheaper than CM4 + carrier board
 
-Second digit:
-  0 = No wireless
-  1 = WiFi + Bluetooth ← You want this
+### Specs
 
-Third section:
-  000 = Lite (SD card)
-  008/016/032 = eMMC size in GB
+| Spec       | Value                                |
+| ---------- | ------------------------------------ |
+| SoC        | BCM2710A1 (quad-core Cortex-A53)     |
+| RAM        | 512MB LPDDR2                         |
+| WiFi       | 2.4GHz 802.11 b/g/n                  |
+| Bluetooth  | BLE 4.2                              |
+| GPIO       | 40-pin header                        |
+| Video Out  | Mini HDMI (not used for badge)       |
+| Storage    | microSD slot                         |
+| Power      | 5V via micro USB (or custom via PCB) |
+| Dimensions | 65mm x 30mm                          |
 
-Examples:
-  CM4102000 → 2GB RAM, Wireless, Lite (SD)  ← Budget pick
-  CM4104000 → 4GB RAM, Wireless, Lite (SD)  ← Recommended
-  CM4108032 → 8GB RAM, Wireless, 32GB eMMC  ← Overkill
-```
+### Tradeoffs vs CM4
 
-### Recommended Purchase
+| Aspect          | Zero 2 W           | CM4                  |
+| --------------- | ------------------- | -------------------- |
+| RAM             | 512MB (fixed)       | 1-8GB (selectable)   |
+| Size            | 65x30mm             | 55x40mm + carrier    |
+| Display         | SPI only (no DSI)   | DSI + HDMI           |
+| Power draw      | ~1.5-2W             | ~3-5W                |
+| Cost            | ~$15                | ~$65 + carrier       |
+| Carrier needed? | No (direct on PCB)  | Yes                  |
+| Form factor     | Better for wearable | Better for dev board |
 
-**CM4102000** or **CM4104000** (Wireless + Lite variant)
+The lower RAM and SPI-only display are acceptable tradeoffs for the massive size, cost, and power savings.
 
-- Lite = SD card slot, easier for development
-- 2GB or 4GB RAM is sufficient for badge UI
+## Display: 3.5" SPI Touchscreen
 
-## CM4 Requires a Carrier Board
+### Why SPI?
 
-The CM4 is just a compute module — no ports, no GPIO access. You need a carrier board.
+The Pi Zero 2 W has no DSI connector. SPI displays connect via the GPIO header, which works well with our custom PCB design.
 
-### Requirements for Carrier Board
+### Display Requirements
 
-- USB-C power input
-- GPIO breakout (for UPS, future RFID)
-- DSI connector (for display)
-- Compact form factor
+- 3.5" IPS panel (~480x320 resolution)
+- SPI interface (connects to GPIO header)
+- Touch input (resistive or capacitive)
+- Wide viewing angle for badge readability
 
-### Recommended Carriers
+### Recommended Displays
 
-| Board                   | USB-C | Size   | Notes                   |
-| ----------------------- | ----- | ------ | ----------------------- |
-| Waveshare CM4-Nano      | ✓     | Tiny   | Minimal, badge-friendly |
-| Waveshare CM4-IO-BASE-B | ✓     | Medium | More GPIO, good for dev |
-| Pimoroni CM4 IO         | ✓     | Medium | Quality build           |
+| Display                    | Resolution | Touch       | Notes                        |
+| -------------------------- | ---------- | ----------- | ---------------------------- |
+| Waveshare 3.5" SPI (Rev C) | 480x320    | Resistive   | Well-documented, Pi-specific |
+| Pimoroni HyperPixel 4.0    | 480x800    | Capacitive  | Higher res, uses DPI not SPI |
+| Generic ILI9488 3.5"       | 480x320    | Resistive   | Cheap, wide availability     |
+
+### SPI Display Driver
+
+The display requires a kernel driver (`fbtft` / `fb_ili9486`) or userspace framebuffer driver. This is handled in the software setup phase.
+
+### Display Connection (SPI Pinout)
+
+| Pin  | Function | GPIO   |
+| ---- | -------- | ------ |
+| VCC  | 3.3V     | Pin 1  |
+| GND  | Ground   | Pin 6  |
+| MOSI | SPI Data | GPIO10 |
+| SCLK | SPI Clock| GPIO11 |
+| CS   | Chip Sel | GPIO8  |
+| DC   | Data/Cmd | GPIO25 |
+| RST  | Reset    | GPIO27 |
+| BL   | Backlight| GPIO18 |
+| T_CS | Touch CS | GPIO7  |
