@@ -9,6 +9,7 @@ A wearable digital badge with dynamic display, VRChat avatar sync, and future RF
 - [Shopping List](./hardware/shopping-list.md) - Components and estimated prices
 - [Assembly](./hardware/assembly.md) - Hardware stack diagram, weight/thermal/battery considerations
 - [PCB Design](./hardware/pcb-design.md) - Custom PCB via EasyEDA, schematic blocks, fabrication
+- [PCB Guideline](./hardware/pcb-guideline.md) - Step-by-step PCB design walkthrough for beginners
 
 ### [Software](./software/)
 - [Architecture](./software/architecture.md) - Tech stack, system architecture diagram
