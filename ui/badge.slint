@@ -1,0 +1,359 @@
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+
+// --- Badge Page (main name card display) ---
+component BadgePage inherits Rectangle {
+    in-out property <string> display-name: "Hebu";
+    in-out property <string> tagline: "Hello from VRCBadge!";
+    in-out property <string> twitter-handle: "@Hebu_VRC";
+    in-out property <string> discord-handle: "hebu";
+    in-out property <int> battery-percent: 100;
+
+    callback open-settings();
+
+    background: transparent;
+
+    // === Layer 0: Accent bar (behind everything) ===
+    Rectangle {
+        x: 0px;
+        y: 95px;
+        width: 480px;
+        height: 36px;
+        background: #1b4f72;
+
+        // Tagline text on the bar
+        Text {
+            x: 190px;
+            width: 270px;
+            text: root.tagline;
+            font-size: 15px;
+            font-weight: 500;
+            color: #e0e8f0;
+            vertical-alignment: center;
+            overflow: elide;
+        }
+    }
+
+    // === Layer 1: Avatar (on top of accent bar) ===
+    Rectangle {
+        x: 20px;
+        y: 45px;
+        width: 150px;
+        height: 150px;
+        border-radius: 16px;
+        background: #2a2a4a;
+        border-width: 2px;
+        border-color: #3a3a5a;
+        clip: true;
+
+        Image {
+            source: @image-url("../images/profile/sample.png");
+            width: 100%;
+            height: 100%;
+            image-fit: cover;
+        }
+    }
+
+    // === Layer 2: Right column content ===
+
+    // Display name
+    Text {
+        x: 190px;
+        y: 55px;
+        width: 270px;
+        text: root.display-name;
+        font-size: 32px;
+        font-weight: 700;
+        color: #ffffff;
+        overflow: elide;
+    }
+
+    // Social handles (right-middle)
+
+    // Twitter / X handle
+    HorizontalLayout {
+        x: 190px;
+        y: 145px;
+        height: 18px;
+        spacing: 4px;
+        alignment: start;
+
+        Rectangle {
+            width: 14px;
+            height: 14px;
+
+            Image {
+                source: @image-url("../images/logos/twitter.svg");
+                width: 13px;
+                height: 13px;
+                x: 0.5px;
+                y: 0.5px;
+                image-fit: contain;
+            }
+        }
+
+        Text {
+            text: root.twitter-handle;
+            font-size: 13px;
+            color: #1da1f2;
+            vertical-alignment: center;
+        }
+    }
+
+    // Discord handle
+    HorizontalLayout {
+        x: 190px;
+        y: 167px;
+        height: 18px;
+        spacing: 4px;
+        alignment: start;
+
+        Rectangle {
+            width: 14px;
+            height: 14px;
+
+            Image {
+                source: @image-url("../images/logos/discord.svg");
+                width: 14px;
+                height: 14px;
+                image-fit: contain;
+            }
+        }
+
+        Text {
+            text: root.discord-handle;
+            font-size: 13px;
+            color: #7289da;
+            vertical-alignment: center;
+        }
+    }
+
+    // VRChat logo (bottom-right, white, no background)
+    Image {
+        source: @image-url("../images/logos/vrchat.svg");
+        x: 350px;
+        y: 225px;
+        width: 110px;
+        height: 48px;
+        image-fit: contain;
+    }
+
+    // Battery indicator
+    Rectangle {
+        x: 370px;
+        y: 290px;
+        width: 90px;
+        height: 24px;
+
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: end;
+
+            Text {
+                text: root.battery-percent + "%";
+                font-size: 13px;
+                font-weight: 700;
+                color: root.battery-percent > 20 ? #4caf50 : #f44336;
+                vertical-alignment: center;
+            }
+
+            // Battery icon (stacked Phosphor SVGs with visibility conditions)
+            Rectangle {
+                width: 24px;
+                height: 24px;
+
+                Image {
+                    visible: root.battery-percent > 75;
+                    source: @image-url("../images/icons/battery-full.svg");
+                    width: 24px;
+                    height: 24px;
+                    image-fit: contain;
+                }
+
+                Image {
+                    visible: root.battery-percent > 50 && root.battery-percent <= 75;
+                    source: @image-url("../images/icons/battery-high.svg");
+                    width: 24px;
+                    height: 24px;
+                    image-fit: contain;
+                }
+
+                Image {
+                    visible: root.battery-percent > 25 && root.battery-percent <= 50;
+                    source: @image-url("../images/icons/battery-medium.svg");
+                    width: 24px;
+                    height: 24px;
+                    image-fit: contain;
+                }
+
+                Image {
+                    visible: root.battery-percent > 10 && root.battery-percent <= 25;
+                    source: @image-url("../images/icons/battery-low.svg");
+                    width: 24px;
+                    height: 24px;
+                    image-fit: contain;
+                }
+
+                Image {
+                    visible: root.battery-percent <= 10;
+                    source: @image-url("../images/icons/battery-empty.svg");
+                    width: 24px;
+                    height: 24px;
+                    image-fit: contain;
+                }
+            }
+        }
+    }
+
+    // Settings gear icon (top-right touch target)
+    Rectangle {
+        x: 430px;
+        y: 0px;
+        width: 50px;
+        height: 50px;
+
+        Image {
+            source: @image-url("../images/icons/gear-six.svg");
+            width: 24px;
+            height: 24px;
+            x: 13px;
+            y: 13px;
+            image-fit: contain;
+        }
+
+        TouchArea {
+            clicked => {
+                root.open-settings();
+            }
+        }
+    }
+}
+
+// --- Settings Page (placeholder) ---
+component SettingsPage inherits Rectangle {
+    callback go-back();
+
+    background: transparent;
+
+    // Header bar
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 480px;
+        height: 50px;
+        background: #1b4f72;
+
+        // Back arrow
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 50px;
+            height: 50px;
+
+            Text {
+                text: "\u{2190}";
+                font-size: 24px;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => {
+                    root.go-back();
+                }
+            }
+        }
+
+        Text {
+            x: 50px;
+            width: 380px;
+            text: "Settings";
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            vertical-alignment: center;
+        }
+    }
+
+    // Setting items
+    VerticalLayout {
+        y: 60px;
+        x: 20px;
+        width: 440px;
+        spacing: 0px;
+
+        for item in [
+            { label: "Display Brightness" },
+            { label: "WiFi" },
+            { label: "About" },
+        ]: Rectangle {
+            height: 52px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: space-between;
+
+                Text {
+                    text: item.label;
+                    font-size: 16px;
+                    color: #cccccc;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "\u{203A}";
+                    font-size: 24px;
+                    color: #555580;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Divider
+            Rectangle {
+                y: 51px;
+                width: 440px;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+    }
+}
+
+// --- Main Window ---
+export component BadgeUI inherits Window {
+    width: 480px;
+    height: 320px;
+    background: #1a1a2e;
+
+    in-out property <string> display-name: "Hebu";
+    in-out property <string> tagline: "Hello from VRCBadge!";
+    in-out property <string> twitter-handle: "@Hebu_VRC";
+    in-out property <string> discord-handle: "hebu";
+    in-out property <int> battery-percent: 85;
+    in-out property <int> current-page: 0;
+
+    // Badge page
+    badge := BadgePage {
+        visible: root.current-page == 0;
+        display-name: root.display-name;
+        tagline: root.tagline;
+        twitter-handle: root.twitter-handle;
+        discord-handle: root.discord-handle;
+        battery-percent: root.battery-percent;
+
+        open-settings => {
+            root.current-page = 1;
+        }
+    }
+
+    // Settings page
+    settings := SettingsPage {
+        visible: root.current-page == 1;
+
+        go-back => {
+            root.current-page = 0;
+        }
+    }
+}

@@ -44,11 +44,11 @@ SPIFFS/LittleFS                — flash-based filesystem for images
 
 From the Slint embedded documentation, the key configuration:
 
-**Cargo features needed:**
+**Cargo features needed (default-features = false):**
 - `compat-1-2`
+- `renderer-software`
 - `unsafe-single-threaded`
 - `libm`
-- `renderer-software`
 
 **Rendering strategy — line-by-line (`render_by_line()`):**
 - Renders one horizontal line at a time instead of a full framebuffer

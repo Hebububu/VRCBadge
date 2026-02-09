@@ -1,0 +1,36 @@
+[package]
+name = "vrcbadge-firmware"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# UI
+slint = { version = "1.15", default-features = false, features = [
+    "compat-1-2",
+    "renderer-software",
+    "unsafe-single-threaded",
+    "libm",
+] }
+
+# ESP-IDF
+esp-idf-sys = { version = "0.36", features = ["binstart"] }
+esp-idf-hal = "0.45"
+esp-idf-svc = "0.51"
+
+# Display (ST7796S) — mipidsi 0.9 has built-in SpiInterface
+mipidsi = "0.9"
+embedded-graphics-core = "0.4"
+embedded-hal = "1.0"
+
+# Touch (GT911)
+gt911 = "0.3"
+
+# Logging
+log = "0.4"
+
+# Error handling
+anyhow = "1"
+
+[build-dependencies]
+slint-build = "1.15"
+embuild = "0.33"
