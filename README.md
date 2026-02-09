@@ -16,6 +16,12 @@ editable profile information (twitter, discord etc..), and future RFID door key 
 
 This project is inspired by Github Conference Badge video, posted by Wes Bos. [Ref Video](https://youtu.be/_jPm_zN95FE?si=vHjaHDR8lpRF7iKP)
 
+### UI Preview
+
+<img src="./images/etc/slint_preview.png" alt="UI Preview" width="480">
+
+Badge UI built with [Slint](https://slint.dev).
+
 </div>
 
 ## Documentation
