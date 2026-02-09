@@ -18,8 +18,9 @@ tower-http = { version = "0.6.8", features = ["fs", "cors"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 
-# Hardware (Pi GPIO)
-rppal = "0.22.1"
+# Hardware (ESP32-S3)
+# TODO: Add esp-idf-hal, esp-idf-svc when ESP-IDF build system is configured
+# See docs/hardware/overview.md for planned dependencies
 
 # Serial (for RFID, future)
 serialport = "4.8.1"

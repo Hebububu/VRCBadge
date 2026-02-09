@@ -1,87 +1,142 @@
 # Hardware Overview
 
-<!-- TODO: Add photo of Pi Zero 2 W + display setup once assembled -->
-![Hardware Overview](../../images/hardware-overview-placeholder.png)
+## Platform: ESP32-S3-WROOM-1-N16R8
 
-*Image pending — will be added after hardware is assembled.*
+### Module Specs
 
-## Chosen Platform: Raspberry Pi Zero 2 W
+- **CPU:** Dual-core Xtensa LX7 @ 240MHz
+- **SRAM:** 512KB
+- **PSRAM:** 8MB Octal-SPI
+- **Flash:** 16MB
+- **Wireless:** WiFi 802.11 b/g/n + BLE 5.0
+- **Antenna:** Integrated PCB antenna
+- **Module size:** ~18x25mm
+- **Unit cost:** ~$4-5
 
-### Why Pi Zero 2 W?
+## Display: Waveshare 3.5" RPi LCD (F)
 
-- Ultra-compact form factor (65mm x 30mm) — ideal for wearable badge
-- Built-in WiFi + Bluetooth
-- Quad-core ARM Cortex-A53 @ 1GHz (64-bit)
-- 512MB RAM — sufficient for badge UI and API server
-- Low power draw (~1.5-2W) — longer battery life than CM4
-- Same Pi ecosystem, community support, and `rppal` compatibility
-- 40-pin GPIO header — direct SPI for display, GPIO for power monitoring
-- No carrier board needed — solders directly onto custom PCB
-- Significantly cheaper than CM4 + carrier board
+**Product:** [Waveshare 3.5inch RPi LCD (F)](https://www.waveshare.com/3.5inch-rpi-lcd-f.htm) (SKU: 30896)
 
-### Specs
+| Spec | Value |
+|------|-------|
+| Resolution | 320 x 480 (portrait default) |
+| Display driver | ST7796S |
+| Display interface | 4-wire SPI |
+| Display panel | IPS |
+| Viewing angle | 170° |
+| Color depth | 262K RGB |
+| Touch driver | GT911 |
+| Touch interface | I2C |
+| Touch type | 5-point capacitive |
+| Touch panel | Toughened glass |
+| Operating voltage | 3.3V - 5V (onboard regulator, powered from 3.3V rail in this design) |
+| Logic level | 3.3V |
+| Display area | 49.36 x 73.84 mm |
+| Panel size | 61.00 x 92.44 mm |
+| Refresh rate | 60Hz |
+| Connector | GH1.25 13-pin cable or Pigo pin header |
 
-| Spec       | Value                                |
-| ---------- | ------------------------------------ |
-| SoC        | BCM2710A1 (quad-core Cortex-A53)     |
-| RAM        | 512MB LPDDR2                         |
-| WiFi       | 2.4GHz 802.11 b/g/n                  |
-| Bluetooth  | BLE 4.2                              |
-| GPIO       | 40-pin header                        |
-| Video Out  | Mini HDMI (not used for badge)       |
-| Storage    | microSD slot                         |
-| Power      | 5V via micro USB (or custom via PCB) |
-| Dimensions | 65mm x 30mm                          |
+### Pin Interface (13-pin)
 
-### Tradeoffs vs CM4
+| Pin # | Name | Description |
+|-------|------|-------------|
+| 1 | TP_RST | Touch panel reset, low active |
+| 2 | TP_INT | Touch panel interrupt |
+| 3 | TP_SCL | Touch panel I2C clock |
+| 4 | TP_SDA | Touch panel I2C data |
+| 5 | LCD_BL | LCD backlight control |
+| 6 | LCD_RST | LCD reset, low active |
+| 7 | LCD_DC | LCD data/command select (high=data, low=command) |
+| 8 | LCD_CS | LCD chip select, low active |
+| 9 | SCLK | SPI clock |
+| 10 | MOSI | SPI MOSI |
+| 11 | MISO | SPI MISO |
+| 12 | GND | Ground |
+| 13 | VCC | Power input (3.3V - 5V) |
 
-| Aspect          | Zero 2 W           | CM4                  |
-| --------------- | ------------------- | -------------------- |
-| RAM             | 512MB (fixed)       | 1-8GB (selectable)   |
-| Size            | 65x30mm             | 55x40mm + carrier    |
-| Display         | SPI only (no DSI)   | DSI + HDMI           |
-| Power draw      | ~1.5-2W             | ~3-5W                |
-| Cost            | ~$15                | ~$65 + carrier       |
-| Carrier needed? | No (direct on PCB)  | Yes                  |
-| Form factor     | Better for wearable | Better for dev board |
+### Resources
 
-The lower RAM and SPI-only display are acceptable tradeoffs for the massive size, cost, and power savings.
+- [ST7796S Datasheet](https://files.waveshare.com/wiki/common/ST7796S_Datasheet.pdf)
+- [GT911 Datasheet](https://files.waveshare.com/wiki/common/GT911_Datasheet.pdf)
+- [Display Schematic](https://files.waveshare.com/wiki/3.5inch%20RPi%20LCD%20(F)/3.5inch_RPi_LCD_(F).pdf)
+- [Product Wiki](https://www.waveshare.com/wiki/3.5inch_RPi_LCD_(F))
+- [ESP32-S3 Demo (Arduino)](https://files.waveshare.com/wiki/3.5inch_RPi_LCD_F/3inch5_RPI_LCD_F_ESP32S3.zip)
 
-## Display: 3.5" SPI Touchscreen
+## PCB Design
 
-### Why SPI?
+### Component Summary
 
-The Pi Zero 2 W has no DSI connector. SPI displays connect via the GPIO header, which works well with our custom PCB design.
+| Component | Part | Notes |
+|-----------|------|-------|
+| MCU | ESP32-S3-WROOM-1-N16R8 | Soldered directly to PCB |
+| Display | Waveshare 3.5" RPi LCD (F) | Connected via GH1.25 13-pin cable |
+| Charger | TP4056 | LiPo charging from USB-C 5V |
+| Battery protection | DW01A + FS8205 | Over-discharge/over-current protection |
+| Soft switch | TPS22918 | Load switch for 3.3V rail |
+| LDO | AP2112K-3.3 | 3.3V regulation from LiPo (3.0-4.2V), 600mA |
+| Fuel gauge | MAX17048 | Battery voltage/percentage via I2C |
+| Connector | USB-C (16-pin) | Charging + programming (built-in USB-JTAG) |
+| Button | Tactile switch | Power on/off |
+| RFID header | UART pin header | Future Chameleon Tiny module |
+| Battery | 3.7V 3000mAh LiPo pouch | |
 
-### Display Requirements
+### Power Path
 
-- 3.5" IPS panel (~480x320 resolution)
-- SPI interface (connects to GPIO header)
-- Touch input (resistive or capacitive)
-- Wide viewing angle for badge readability
+```
+USB-C 5V --> TP4056 --> LiPo 3.7V --> DW01A/FS8205 --> TPS22918 --> AP2112K --> 3.3V rail
+                                                                                 |
+                                                                                 +-- ESP32-S3
+                                                                                 +-- ST7796S display
+                                                                                 +-- GT911 touch
+                                                                                 +-- MAX17048
+```
 
-### Recommended Displays
+The AP2112K-3.3 is a low-dropout regulator with 600mA output. Dropout voltage is ~250mV, so it works down to ~3.55V LiPo voltage. Below that, the battery is near empty anyway (3.0V cutoff from DW01A).
 
-| Display                    | Resolution | Touch       | Notes                        |
-| -------------------------- | ---------- | ----------- | ---------------------------- |
-| Waveshare 3.5" SPI (Rev C) | 480x320    | Resistive   | Well-documented, Pi-specific |
-| Pimoroni HyperPixel 4.0    | 480x800    | Capacitive  | Higher res, uses DPI not SPI |
-| Generic ILI9488 3.5"       | 480x320    | Resistive   | Cheap, wide availability     |
+**Current budget note:** ESP32-S3 peak draw during WiFi TX is ~500mA. ST7796S backlight adds ~40-80mA, GT911 ~10mA, MAX17048 ~50uA. Combined peak may approach or exceed 600mA — verify during prototyping. If insufficient, consider upgrading to a higher-current regulator (e.g., AP2114H-3.3, 1A output).
 
-### SPI Display Driver
+### GPIO Pin Mapping
 
-The display requires a kernel driver (`fbtft` / `fb_ili9486`) or userspace framebuffer driver. This is handled in the software setup phase.
+| Function | ESP32-S3 Pin | Interface | Notes |
+|----------|-------------|-----------|-------|
+| Display MOSI | GPIO 11 | SPI (FSPI) | FSPI default |
+| Display SCLK | GPIO 12 | SPI (FSPI) | FSPI default |
+| Display CS | GPIO 10 | SPI (FSPI) | FSPI default |
+| Display DC | GPIO 9 | GPIO | Data/command select |
+| Display RST | GPIO 8 | GPIO | Reset, low active |
+| Display BL | GPIO 7 | PWM | Backlight brightness control |
+| Touch SDA | GPIO 1 | I2C | Shared bus with MAX17048 |
+| Touch SCL | GPIO 2 | I2C | Shared bus with MAX17048 |
+| Touch INT | GPIO 3 | GPIO (input) | Interrupt, active low |
+| Touch RST | GPIO 4 | GPIO | Reset, low active |
+| Fuel gauge SDA | GPIO 1 | I2C | Shared bus with GT911 (addr: 0x36) |
+| Fuel gauge SCL | GPIO 2 | I2C | Shared bus with GT911 (addr: 0x36) |
+| UART TX (RFID) | GPIO 17 | UART1 | Future Chameleon Tiny |
+| UART RX (RFID) | GPIO 18 | UART1 | Future Chameleon Tiny |
+| Power button | GPIO 5 | GPIO (input) | Interrupt for wake/sleep |
+| USB D+ | GPIO 20 | USB-JTAG | Built-in |
+| USB D- | GPIO 19 | USB-JTAG | Built-in |
 
-### Display Connection (SPI Pinout)
+**I2C bus sharing:** The GT911 touch controller (default address: 0x5D) and MAX17048 fuel gauge (address: 0x36) share the same I2C bus on GPIO 1/2. No address conflict.
 
-| Pin  | Function | GPIO   |
-| ---- | -------- | ------ |
-| VCC  | 3.3V     | Pin 1  |
-| GND  | Ground   | Pin 6  |
-| MOSI | SPI Data | GPIO10 |
-| SCLK | SPI Clock| GPIO11 |
-| CS   | Chip Sel | GPIO8  |
-| DC   | Data/Cmd | GPIO25 |
-| RST  | Reset    | GPIO27 |
-| BL   | Backlight| GPIO18 |
-| T_CS | Touch CS | GPIO7  |
+Pin assignments are preliminary and subject to change during PCB layout to optimize routing.
+
+## BOM Estimate
+
+| Category | Item | Cost |
+|----------|------|------|
+| MCU | ESP32-S3-WROOM-1-N16R8 | $4-5 |
+| Display | Waveshare 3.5" RPi LCD (F) | ~$20 |
+| Battery | 3.7V 3000mAh LiPo pouch | $5-8 |
+| Charger IC | TP4056 | $0.20 |
+| Protection | DW01A + FS8205 | $0.30 |
+| LDO | AP2112K-3.3 | $0.30 |
+| Soft switch | TPS22918 | $0.80 |
+| Fuel gauge | MAX17048 | $2-3 |
+| Connector | USB-C (16-pin) | $0.30 |
+| Button | Tactile switch | $0.10 |
+| Passives | Resistors, capacitors, etc. | $1-2 |
+| PCB fab | JLCPCB 2-layer + SMT assembly | $10-30 |
+| **Total (without RFID)** | | **~$45-70** |
+| RFID (future) | Chameleon Tiny module | $35 |
+| **Total (with RFID)** | | **~$80-105** |
