@@ -4,6 +4,7 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_svc::wifi::{
     AccessPointConfiguration, AuthMethod, BlockingWifi, Configuration, EspWifi,
 };
+use esp_idf_sys::{esp, esp_wifi_ap_get_sta_list, wifi_sta_list_t};
 
 /// Initialize WiFi in AP mode.
 ///
@@ -29,4 +30,19 @@ pub fn init(
     log::info!("WiFi AP started — SSID: VRCBadge, IP: 192.168.4.1");
 
     Ok(wifi)
+}
+
+/// Query the number of stations currently connected to the AP.
+pub fn connected_clients() -> u8 {
+    // SAFETY: wifi_sta_list_t is #[repr(C)] with only plain data fields (arrays, ints,
+    // bitfields). Zero is a valid state for all fields.
+    let mut sta_list: wifi_sta_list_t = unsafe { core::mem::zeroed() };
+
+    // SAFETY: esp_wifi_ap_get_sta_list writes into the provided pointer. We pass a valid
+    // mutable reference to a stack-allocated struct. The function is thread-safe (takes
+    // an internal WiFi lock). Returns an error if WiFi is not started.
+    match unsafe { esp!(esp_wifi_ap_get_sta_list(&mut sta_list)) } {
+        Ok(()) => (sta_list.num.max(0) as u8).min(15),
+        Err(_) => 0,
+    }
 }

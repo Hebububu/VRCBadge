@@ -68,6 +68,7 @@ fn main() -> anyhow::Result<()> {
     log::info!("UI initialized, entering main loop");
 
     // --- Main event loop ---
+    let mut loop_count: u32 = 0;
     loop {
         // 1. Process Slint timers and animations
         slint::platform::update_timers_and_animations();
@@ -75,12 +76,19 @@ fn main() -> anyhow::Result<()> {
         // 2. Poll touch input → dispatch events to Slint
         touch.poll(&window);
 
-        // 3. Render display if needed
+        // 3. Poll WiFi client count (~every 2 seconds at 16ms sleep = 125 iterations)
+        loop_count = loop_count.wrapping_add(1);
+        if loop_count % 125 == 0 {
+            let clients = wifi::connected_clients() as i32;
+            ui.set_wifi_clients(clients);
+        }
+
+        // 4. Render display if needed
         window.draw_if_needed(|renderer| {
             renderer.render_by_line(DisplayLineBuffer::new(&mut display));
         });
 
-        // 4. Sleep until next event needed
+        // 5. Sleep until next event needed
         if !window.has_active_animations() {
             if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                 // Sleep for at most the duration, but wake periodically for touch polling

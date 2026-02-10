@@ -228,9 +228,10 @@ component BadgePage inherits Rectangle {
     }
 }
 
-// --- Settings Page (placeholder) ---
+// --- Settings Page ---
 component SettingsPage inherits Rectangle {
     callback go-back();
+    callback open-wifi();
 
     background: transparent;
 
@@ -282,11 +283,8 @@ component SettingsPage inherits Rectangle {
         width: 440px;
         spacing: 0px;
 
-        for item in [
-            { label: "Display Brightness" },
-            { label: "WiFi" },
-            { label: "About" },
-        ]: Rectangle {
+        // Display Brightness
+        Rectangle {
             height: 52px;
             background: transparent;
 
@@ -296,7 +294,7 @@ component SettingsPage inherits Rectangle {
                 alignment: space-between;
 
                 Text {
-                    text: item.label;
+                    text: "Display Brightness";
                     font-size: 16px;
                     color: #cccccc;
                     vertical-alignment: center;
@@ -310,9 +308,209 @@ component SettingsPage inherits Rectangle {
                 }
             }
 
-            // Divider
             Rectangle {
                 y: 51px;
+                width: 440px;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+
+        // WiFi
+        Rectangle {
+            height: 52px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: space-between;
+
+                Text {
+                    text: "WiFi";
+                    font-size: 16px;
+                    color: #cccccc;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "\u{203A}";
+                    font-size: 24px;
+                    color: #555580;
+                    vertical-alignment: center;
+                }
+            }
+
+            TouchArea {
+                clicked => {
+                    root.open-wifi();
+                }
+            }
+
+            Rectangle {
+                y: 51px;
+                width: 440px;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+
+        // About
+        Rectangle {
+            height: 52px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: space-between;
+
+                Text {
+                    text: "About";
+                    font-size: 16px;
+                    color: #cccccc;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "\u{203A}";
+                    font-size: 24px;
+                    color: #555580;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                y: 51px;
+                width: 440px;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+    }
+}
+
+// --- WiFi Info Page ---
+component WiFiPage inherits Rectangle {
+    in property <int> connected-clients: 0;
+
+    callback go-back();
+
+    background: transparent;
+
+    // Header bar
+    Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 480px;
+        height: 50px;
+        background: #1b4f72;
+
+        // Back arrow
+        Rectangle {
+            x: 0px;
+            y: 0px;
+            width: 50px;
+            height: 50px;
+
+            Text {
+                text: "\u{2190}";
+                font-size: 24px;
+                color: #ffffff;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
+            TouchArea {
+                clicked => {
+                    root.go-back();
+                }
+            }
+        }
+
+        Text {
+            x: 50px;
+            width: 380px;
+            text: "WiFi";
+            font-size: 20px;
+            font-weight: 600;
+            color: #ffffff;
+            vertical-alignment: center;
+        }
+    }
+
+    // Info rows
+    VerticalLayout {
+        y: 60px;
+        x: 20px;
+        width: 440px;
+        spacing: 0px;
+
+        for item in [
+            { label: "Mode", value: "AP Mode" },
+            { label: "SSID", value: "VRCBadge" },
+            { label: "IP Address", value: "192.168.4.1" },
+        ]: Rectangle {
+            height: 48px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: space-between;
+
+                Text {
+                    text: item.label;
+                    font-size: 15px;
+                    color: #888888;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: item.value;
+                    font-size: 15px;
+                    color: #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Divider
+            Rectangle {
+                y: 47px;
+                width: 440px;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+
+        // Connected clients (dynamic value from Rust)
+        Rectangle {
+            height: 48px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 12px;
+                padding-right: 12px;
+                alignment: space-between;
+
+                Text {
+                    text: "Connected Clients";
+                    font-size: 15px;
+                    color: #888888;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.connected-clients == 0 ? "None" : root.connected-clients + "";
+                    font-size: 15px;
+                    color: root.connected-clients > 0 ? #4caf50 : #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+
+            // Divider
+            Rectangle {
+                y: 47px;
                 width: 440px;
                 height: 1px;
                 background: #2a2a4a;
@@ -332,6 +530,7 @@ export component BadgeUI inherits Window {
     in-out property <string> twitter-handle: "@Hebu_VRC";
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 85;
+    in-out property <int> wifi-clients: 0;
     in-out property <int> current-page: 0;
 
     // Badge page
@@ -354,6 +553,20 @@ export component BadgeUI inherits Window {
 
         go-back => {
             root.current-page = 0;
+        }
+
+        open-wifi => {
+            root.current-page = 2;
+        }
+    }
+
+    // WiFi info page
+    wifi-page := WiFiPage {
+        visible: root.current-page == 2;
+        connected-clients: root.wifi-clients;
+
+        go-back => {
+            root.current-page = 1;
         }
     }
 }
