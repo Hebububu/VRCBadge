@@ -5,7 +5,7 @@ use embedded_graphics_core::pixelcolor::Rgb565;
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{AnyIOPin, AnyOutputPin, PinDriver};
 use esp_idf_hal::spi::config::Config as SpiConfig;
-use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver, SPI2};
+use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver, SPI3};
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7796;
 use mipidsi::options::{ColorOrder, Orientation, Rotation};
@@ -37,7 +37,7 @@ const SPI_BUFFER_SIZE: usize = 512;
 ///
 /// Returns the initialized display in landscape orientation (480x320).
 pub fn init(
-    spi: SPI2,
+    spi: SPI3,
     sclk: AnyOutputPin,
     mosi: AnyOutputPin,
     cs: AnyOutputPin,

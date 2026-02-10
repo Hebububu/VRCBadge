@@ -7,21 +7,9 @@ component BadgePage inherits Rectangle {
     in-out property <string> twitter-handle: "@Hebu_VRC";
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 100;
-    in property <image> background-image;
-
     callback open-settings();
 
     background: transparent;
-
-    // === Background image (behind everything) ===
-    Image {
-        x: 0px;
-        y: 0px;
-        width: 480px;
-        height: 320px;
-        source: root.background-image;
-        image-fit: cover;
-    }
 
     // === Layer 0: Accent bar ===
     Rectangle {
@@ -93,7 +81,7 @@ component BadgePage inherits Rectangle {
             height: 14px;
 
             Image {
-                source: @image-url("../images/logos/twitter.svg");
+                source: @image-url("../images/logos/twitter.png");
                 width: 13px;
                 height: 13px;
                 x: 0.5px;
@@ -123,7 +111,7 @@ component BadgePage inherits Rectangle {
             height: 14px;
 
             Image {
-                source: @image-url("../images/logos/discord.svg");
+                source: @image-url("../images/logos/discord.png");
                 width: 14px;
                 height: 14px;
                 image-fit: contain;
@@ -140,7 +128,7 @@ component BadgePage inherits Rectangle {
 
     // VRChat logo (bottom-right, white, no background)
     Image {
-        source: @image-url("../images/logos/vrchat.svg");
+        source: @image-url("../images/logos/vrchat.png");
         x: 350px;
         y: 225px;
         width: 110px;
@@ -174,7 +162,7 @@ component BadgePage inherits Rectangle {
 
                 Image {
                     visible: root.battery-percent > 75;
-                    source: @image-url("../images/icons/battery-full.svg");
+                    source: @image-url("../images/icons/battery-full.png");
                     width: 24px;
                     height: 24px;
                     image-fit: contain;
@@ -182,7 +170,7 @@ component BadgePage inherits Rectangle {
 
                 Image {
                     visible: root.battery-percent > 50 && root.battery-percent <= 75;
-                    source: @image-url("../images/icons/battery-high.svg");
+                    source: @image-url("../images/icons/battery-high.png");
                     width: 24px;
                     height: 24px;
                     image-fit: contain;
@@ -190,7 +178,7 @@ component BadgePage inherits Rectangle {
 
                 Image {
                     visible: root.battery-percent > 25 && root.battery-percent <= 50;
-                    source: @image-url("../images/icons/battery-medium.svg");
+                    source: @image-url("../images/icons/battery-medium.png");
                     width: 24px;
                     height: 24px;
                     image-fit: contain;
@@ -198,7 +186,7 @@ component BadgePage inherits Rectangle {
 
                 Image {
                     visible: root.battery-percent > 10 && root.battery-percent <= 25;
-                    source: @image-url("../images/icons/battery-low.svg");
+                    source: @image-url("../images/icons/battery-low.png");
                     width: 24px;
                     height: 24px;
                     image-fit: contain;
@@ -206,7 +194,7 @@ component BadgePage inherits Rectangle {
 
                 Image {
                     visible: root.battery-percent <= 10;
-                    source: @image-url("../images/icons/battery-empty.svg");
+                    source: @image-url("../images/icons/battery-empty.png");
                     width: 24px;
                     height: 24px;
                     image-fit: contain;
@@ -223,7 +211,7 @@ component BadgePage inherits Rectangle {
         height: 50px;
 
         Image {
-            source: @image-url("../images/icons/gear-six.svg");
+            source: @image-url("../images/icons/gear-six.png");
             width: 24px;
             height: 24px;
             x: 13px;
@@ -560,7 +548,6 @@ export component BadgeUI inherits Window {
     in-out property <int> battery-percent: 85;
     in-out property <int> wifi-clients: 0;
     in-out property <float> display-brightness: 50;
-    in-out property <image> background-image;
     in-out property <int> current-page: 0;
 
     callback brightness-changed(float);
@@ -573,8 +560,6 @@ export component BadgeUI inherits Window {
         twitter-handle: root.twitter-handle;
         discord-handle: root.discord-handle;
         battery-percent: root.battery-percent;
-        background-image: root.background-image;
-
         open-settings => {
             root.current-page = 1;
         }

@@ -5,7 +5,6 @@ mod touch;
 mod wifi;
 
 use std::cell::RefCell;
-use std::sync::{Arc, Mutex};
 
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::peripherals::Peripherals;
@@ -13,7 +12,6 @@ use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_sys as _;
-use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
 use crate::display::DisplayLineBuffer;
 use crate::platform::Esp32Platform;
@@ -25,7 +23,7 @@ slint::include_modules!();
 fn main() -> anyhow::Result<()> {
     // Initialize ESP-IDF logging + system
     esp_idf_svc::log::EspLogger::initialize_default();
-    log::info!("VRCBadge firmware starting");
+    log::info!("VRCBadge firmware starting (ESP32 port)");
 
     // Take hardware peripherals
     let peripherals = Peripherals::take()?;
@@ -34,8 +32,7 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
-    let pending_background: http::SharedImageData = Arc::new(Mutex::new(None));
-    let _server = http::init(pending_background.clone())?;
+    let _server = http::init()?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
@@ -44,32 +41,35 @@ fn main() -> anyhow::Result<()> {
         .map_err(|e| anyhow::anyhow!("Failed to set Slint platform: {:?}", e))?;
 
     // --- Display (ST7796S over SPI) ---
+    // ESP32 wiring: SCLK=18, MOSI=23, CS=5, DC=27, RST=33
     let mut display = display::init(
-        peripherals.spi2,
-        peripherals.pins.gpio12.into(), // SCLK
-        peripherals.pins.gpio11.into(), // MOSI
-        peripherals.pins.gpio10.into(), // CS
-        peripherals.pins.gpio9.into(),  // DC
-        peripherals.pins.gpio8.into(),  // RST
+        peripherals.spi3,               // VSPI — native pins for GPIO 18/23/5
+        peripherals.pins.gpio18.into(), // SCLK
+        peripherals.pins.gpio23.into(), // MOSI
+        peripherals.pins.gpio5.into(),  // CS
+        peripherals.pins.gpio27.into(), // DC
+        peripherals.pins.gpio33.into(), // RST
     )?;
 
     // --- Backlight PWM (25kHz, 8-bit = 256 duty levels) ---
+    // ESP32 wiring: LCD_BL=32
     let timer = LedcTimerDriver::new(
         peripherals.ledc.timer0,
         &TimerConfig::new()
             .frequency(25.kHz().into())
             .resolution(esp_idf_hal::ledc::Resolution::Bits8),
     )?;
-    let mut backlight = LedcDriver::new(peripherals.ledc.channel0, timer, peripherals.pins.gpio7)?;
+    let mut backlight = LedcDriver::new(peripherals.ledc.channel0, timer, peripherals.pins.gpio32)?;
     let max_duty = backlight.get_max_duty();
     backlight.set_duty(max_duty / 2)?; // Start at 50% brightness
 
     // --- Touch (GT911 over I2C) ---
+    // ESP32 wiring: SDA=21, SCL=22, TP_RST=25
     let mut touch = TouchController::new(
         peripherals.i2c0,
-        peripherals.pins.gpio1.into(), // SDA
-        peripherals.pins.gpio2.into(), // SCL
-        peripherals.pins.gpio4.into(), // Touch RST
+        peripherals.pins.gpio21.into(), // SDA
+        peripherals.pins.gpio22.into(), // SCL
+        peripherals.pins.gpio25.into(), // Touch RST
     )?;
 
     // --- Create UI ---
@@ -100,25 +100,11 @@ fn main() -> anyhow::Result<()> {
         // 2. Poll touch input → dispatch events to Slint
         touch.poll(&window);
 
-        // 3. Poll for updates (~every 2 seconds at 16ms sleep = 125 iterations)
+        // 3. Poll WiFi client count (~every 2 seconds at 16ms sleep = 125 iterations)
         loop_count = loop_count.wrapping_add(1);
         if loop_count % 125 == 0 {
-            // WiFi client count
             let clients = wifi::connected_clients() as i32;
             ui.set_wifi_clients(clients);
-
-            // Check for new background image from HTTP upload
-            if let Ok(mut pending) = pending_background.try_lock() {
-                if let Some(rgb_data) = pending.take() {
-                    let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
-                        &rgb_data,
-                        platform::DISPLAY_WIDTH,
-                        platform::DISPLAY_HEIGHT,
-                    );
-                    ui.set_background_image(Image::from_rgb8(buffer));
-                    log::info!("Background image updated");
-                }
-            }
         }
 
         // 4. Render display if needed

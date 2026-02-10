@@ -1,9 +1,3 @@
-# --- PSRAM ---
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
-CONFIG_SPIRAM_BOOT_INIT=y
-
 # --- SPI ---
 CONFIG_SPI_MASTER_IN_IRAM=y
 
@@ -15,10 +9,8 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
 
 # --- Partition table ---
-# Custom layout: 4MB app + 12MB SPIFFS data (for avatar, profile, config)
-# partitions.csv is copied to the esp-idf-sys build dir via ESP_IDF_GLOB in .cargo/config.toml
-CONFIG_PARTITION_TABLE_CUSTOM=y
-CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+# Use built-in single app large layout (fits in 4MB flash)
+CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
 
 # --- WiFi ---
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
@@ -29,7 +21,7 @@ CONFIG_ESP_WIFI_DYNAMIC_TX_BUFFER_NUM=32
 CONFIG_HTTPD_MAX_REQ_HDR_LEN=1024
 
 # --- Flash ---
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
+CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 
 # --- Logging ---
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
