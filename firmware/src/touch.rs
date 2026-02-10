@@ -33,14 +33,37 @@ impl<'a> TouchController<'a> {
     /// Initialize the GT911 touch controller.
     ///
     /// Sets up I2C bus and performs GT911 init sequence.
-    /// The touch reset pin is toggled to ensure the GT911 is in a known state.
-    pub fn new(i2c: I2C0, sda: AnyIOPin, scl: AnyIOPin, rst: AnyOutputPin) -> anyhow::Result<Self> {
-        // Toggle touch reset pin: hold low 10ms, then release
+    /// The INT pin must be driven LOW during reset to select I2C address 0x5D,
+    /// then released to floating input so the GT911 can drive it as data-ready.
+    pub fn new(
+        i2c: I2C0,
+        sda: AnyIOPin,
+        scl: AnyIOPin,
+        rst: AnyOutputPin,
+        int: AnyIOPin,
+    ) -> anyhow::Result<Self> {
+        // GT911 reset sequence (datasheet section 5.2):
+        // 1. Drive INT low to select I2C address 0x5D
+        let mut int_pin = PinDriver::output(int)?;
+        int_pin.set_low()?;
+
+        // 2. Pull RST low for >= 1ms (we use 10ms)
         let mut rst_pin = PinDriver::output(rst)?;
         rst_pin.set_low()?;
         esp_idf_hal::delay::FreeRtos::delay_ms(10);
+
+        // 3. Release RST high — GT911 latches INT state as address select
         rst_pin.set_high()?;
-        esp_idf_hal::delay::FreeRtos::delay_ms(50); // GT911 needs ~50ms after reset
+        esp_idf_hal::delay::FreeRtos::delay_ms(5);
+
+        // 4. Keep INT low — we poll via I2C (don't need the data-ready interrupt).
+        // Leaking the pin driver prevents it from being dropped/reconfigured,
+        // which avoids floating pin issues on ESP32 GPIO26.
+        int_pin.set_low()?;
+        core::mem::forget(int_pin);
+
+        // 5. Wait for GT911 to fully boot
+        esp_idf_hal::delay::FreeRtos::delay_ms(50);
 
         // Configure I2C
         let i2c_config = I2cConfig::new().baudrate(I2C_FREQ.into());

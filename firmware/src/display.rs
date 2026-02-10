@@ -8,7 +8,7 @@ use esp_idf_hal::spi::config::Config as SpiConfig;
 use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver, SPI3};
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7796;
-use mipidsi::options::{ColorOrder, Orientation, Rotation};
+use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
 use mipidsi::{Builder, Display};
 use slint::platform::software_renderer::{LineBufferProvider, Rgb565Pixel};
 
@@ -68,6 +68,7 @@ pub fn init(
     let display = Builder::new(ST7796, di)
         .reset_pin(rst_pin)
         .color_order(ColorOrder::Bgr)
+        .invert_colors(ColorInversion::Inverted)
         .display_size(320, 480) // Native portrait resolution
         .orientation(Orientation::new().rotate(Rotation::Deg90)) // Landscape
         .init(&mut FreeRtos)

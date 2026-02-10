@@ -64,12 +64,13 @@ fn main() -> anyhow::Result<()> {
     backlight.set_duty(max_duty / 2)?; // Start at 50% brightness
 
     // --- Touch (GT911 over I2C) ---
-    // ESP32 wiring: SDA=21, SCL=22, TP_RST=25
+    // ESP32 wiring: SDA=21, SCL=22, TP_RST=25, TP_INT=26
     let mut touch = TouchController::new(
         peripherals.i2c0,
         peripherals.pins.gpio21.into(), // SDA
         peripherals.pins.gpio22.into(), // SCL
         peripherals.pins.gpio25.into(), // Touch RST
+        peripherals.pins.gpio26.into(), // Touch INT
     )?;
 
     // --- Create UI ---
