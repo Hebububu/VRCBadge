@@ -11,3 +11,9 @@ build-std = ["std", "panic_abort"]
 [env]
 MCU = "esp32s3"
 ESP_IDF_VERSION = "v5.3"
+# Copy partitions.csv into the esp-idf-sys build output directory.
+# ESP-IDF CMake resolves CONFIG_PARTITION_TABLE_CUSTOM_FILENAME relative to its
+# internal build dir, not the firmware source dir. This glob mechanism copies the
+# file so ESP-IDF can find it.
+ESP_IDF_GLOB_BASE = { value = "", relative = true }
+ESP_IDF_GLOB_PARTITIONS = "partitions.csv"
