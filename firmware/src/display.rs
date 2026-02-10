@@ -43,7 +43,6 @@ pub fn init(
     cs: AnyOutputPin,
     dc: AnyOutputPin,
     rst: AnyOutputPin,
-    bl: AnyOutputPin,
 ) -> anyhow::Result<BadgeDisplay> {
     // Configure SPI bus — ST7796S supports up to 80MHz, start at 40MHz for reliability
     let spi_config = SpiConfig::new().baudrate(40_000_000.into());
@@ -58,10 +57,6 @@ pub fn init(
 
     // Reset pin
     let rst_pin = PinDriver::output(rst)?;
-
-    // Backlight — turn on at full brightness for now
-    let mut bl_pin = PinDriver::output(bl)?;
-    bl_pin.set_high()?;
 
     // Leak a buffer to get 'static lifetime — needed because Display holds a reference to it
     let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; SPI_BUFFER_SIZE]));

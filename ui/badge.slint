@@ -1,4 +1,4 @@
-import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Slider } from "std-widgets.slint";
 
 // --- Badge Page (main name card display) ---
 component BadgePage inherits Rectangle {
@@ -230,8 +230,11 @@ component BadgePage inherits Rectangle {
 
 // --- Settings Page ---
 component SettingsPage inherits Rectangle {
+    in-out property <float> brightness: 50;
+
     callback go-back();
     callback open-wifi();
+    callback brightness-changed(float);
 
     background: transparent;
 
@@ -285,31 +288,45 @@ component SettingsPage inherits Rectangle {
 
         // Display Brightness
         Rectangle {
-            height: 52px;
+            height: 72px;
             background: transparent;
 
-            HorizontalLayout {
+            VerticalLayout {
                 padding-left: 12px;
                 padding-right: 12px;
-                alignment: space-between;
+                spacing: 4px;
 
-                Text {
-                    text: "Display Brightness";
-                    font-size: 16px;
-                    color: #cccccc;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    alignment: space-between;
+
+                    Text {
+                        text: "Display Brightness";
+                        font-size: 16px;
+                        color: #cccccc;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: Math.round(root.brightness) + "%";
+                        font-size: 14px;
+                        color: #888888;
+                        vertical-alignment: center;
+                    }
                 }
 
-                Text {
-                    text: "\u{203A}";
-                    font-size: 24px;
-                    color: #555580;
-                    vertical-alignment: center;
+                Slider {
+                    minimum: 10;
+                    maximum: 100;
+                    value: root.brightness;
+                    changed(value) => {
+                        root.brightness = value;
+                        root.brightness-changed(value);
+                    }
                 }
             }
 
             Rectangle {
-                y: 51px;
+                y: 71px;
                 width: 440px;
                 height: 1px;
                 background: #2a2a4a;
@@ -531,7 +548,10 @@ export component BadgeUI inherits Window {
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 85;
     in-out property <int> wifi-clients: 0;
+    in-out property <float> display-brightness: 50;
     in-out property <int> current-page: 0;
+
+    callback brightness-changed(float);
 
     // Badge page
     badge := BadgePage {
@@ -550,6 +570,7 @@ export component BadgeUI inherits Window {
     // Settings page
     settings := SettingsPage {
         visible: root.current-page == 1;
+        brightness: root.display-brightness;
 
         go-back => {
             root.current-page = 0;
@@ -557,6 +578,10 @@ export component BadgeUI inherits Window {
 
         open-wifi => {
             root.current-page = 2;
+        }
+
+        brightness-changed(value) => {
+            root.brightness-changed(value);
         }
     }
 

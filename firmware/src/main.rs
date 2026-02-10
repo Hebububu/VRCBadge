@@ -4,7 +4,11 @@ mod platform;
 mod touch;
 mod wifi;
 
+use std::cell::RefCell;
+
+use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_sys as _;
@@ -44,8 +48,18 @@ fn main() -> anyhow::Result<()> {
         peripherals.pins.gpio10.into(), // CS
         peripherals.pins.gpio9.into(),  // DC
         peripherals.pins.gpio8.into(),  // RST
-        peripherals.pins.gpio7.into(),  // BL
     )?;
+
+    // --- Backlight PWM (25kHz, 8-bit = 256 duty levels) ---
+    let timer = LedcTimerDriver::new(
+        peripherals.ledc.timer0,
+        &TimerConfig::new()
+            .frequency(25.kHz().into())
+            .resolution(esp_idf_hal::ledc::Resolution::Bits8),
+    )?;
+    let mut backlight = LedcDriver::new(peripherals.ledc.channel0, timer, peripherals.pins.gpio7)?;
+    let max_duty = backlight.get_max_duty();
+    backlight.set_duty(max_duty / 2)?; // Start at 50% brightness
 
     // --- Touch (GT911 over I2C) ---
     let mut touch = TouchController::new(
@@ -64,6 +78,13 @@ fn main() -> anyhow::Result<()> {
     ui.set_twitter_handle("@Hebu_VRC".into());
     ui.set_discord_handle("hebu".into());
     ui.set_battery_percent(100);
+
+    // Wire brightness slider to backlight PWM
+    let backlight = RefCell::new(backlight);
+    ui.on_brightness_changed(move |percent| {
+        let duty = (percent.clamp(10.0, 100.0) / 100.0 * max_duty as f32) as u32;
+        let _ = backlight.borrow_mut().set_duty(duty);
+    });
 
     log::info!("UI initialized, entering main loop");
 
