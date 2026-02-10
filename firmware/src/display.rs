@@ -126,7 +126,7 @@ impl LineBufferProvider for DisplayLineBuffer<'_> {
         let _ = self.display.set_pixels(
             range.start as u16,
             line as u16,
-            (range.end - 1) as u16,
+            range.end.saturating_sub(1) as u16,
             line as u16,
             pixels,
         );
