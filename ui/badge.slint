@@ -7,12 +7,23 @@ component BadgePage inherits Rectangle {
     in-out property <string> twitter-handle: "@Hebu_VRC";
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 100;
+    in property <image> background-image;
 
     callback open-settings();
 
     background: transparent;
 
-    // === Layer 0: Accent bar (behind everything) ===
+    // === Background image (behind everything) ===
+    Image {
+        x: 0px;
+        y: 0px;
+        width: 480px;
+        height: 320px;
+        source: root.background-image;
+        image-fit: cover;
+    }
+
+    // === Layer 0: Accent bar ===
     Rectangle {
         x: 0px;
         y: 95px;
@@ -549,6 +560,7 @@ export component BadgeUI inherits Window {
     in-out property <int> battery-percent: 85;
     in-out property <int> wifi-clients: 0;
     in-out property <float> display-brightness: 50;
+    in-out property <image> background-image;
     in-out property <int> current-page: 0;
 
     callback brightness-changed(float);
@@ -561,6 +573,7 @@ export component BadgeUI inherits Window {
         twitter-handle: root.twitter-handle;
         discord-handle: root.discord-handle;
         battery-percent: root.battery-percent;
+        background-image: root.background-image;
 
         open-settings => {
             root.current-page = 1;

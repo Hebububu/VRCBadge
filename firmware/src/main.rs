@@ -5,6 +5,7 @@ mod touch;
 mod wifi;
 
 use std::cell::RefCell;
+use std::sync::{Arc, Mutex};
 
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::peripherals::Peripherals;
@@ -12,6 +13,7 @@ use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_sys as _;
+use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
 use crate::display::DisplayLineBuffer;
 use crate::platform::Esp32Platform;
@@ -32,7 +34,8 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
-    let _server = http::init()?;
+    let pending_background: http::SharedImageData = Arc::new(Mutex::new(None));
+    let _server = http::init(pending_background.clone())?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
@@ -97,11 +100,25 @@ fn main() -> anyhow::Result<()> {
         // 2. Poll touch input → dispatch events to Slint
         touch.poll(&window);
 
-        // 3. Poll WiFi client count (~every 2 seconds at 16ms sleep = 125 iterations)
+        // 3. Poll for updates (~every 2 seconds at 16ms sleep = 125 iterations)
         loop_count = loop_count.wrapping_add(1);
         if loop_count % 125 == 0 {
+            // WiFi client count
             let clients = wifi::connected_clients() as i32;
             ui.set_wifi_clients(clients);
+
+            // Check for new background image from HTTP upload
+            if let Ok(mut pending) = pending_background.try_lock() {
+                if let Some(rgb_data) = pending.take() {
+                    let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
+                        &rgb_data,
+                        platform::DISPLAY_WIDTH,
+                        platform::DISPLAY_HEIGHT,
+                    );
+                    ui.set_background_image(Image::from_rgb8(buffer));
+                    log::info!("Background image updated");
+                }
+            }
         }
 
         // 4. Render display if needed
