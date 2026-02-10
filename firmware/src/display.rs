@@ -70,7 +70,7 @@ pub fn init(
         .color_order(ColorOrder::Bgr)
         .invert_colors(ColorInversion::Inverted)
         .display_size(320, 480) // Native portrait resolution
-        .orientation(Orientation::new().rotate(Rotation::Deg90)) // Landscape
+        .orientation(Orientation::new().rotate(Rotation::Deg90).flip_vertical()) // Landscape, un-mirror
         .init(&mut FreeRtos)
         .map_err(|e| anyhow::anyhow!("Display init failed: {:?}", e))?;
 
