@@ -15,9 +15,9 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
 
 # --- Partition table ---
-# Use single factory partition (default) for now.
-# Custom partitions (4MB app + 12MB data) will be added when storage is needed.
-CONFIG_PARTITION_TABLE_SINGLE_APP_LARGE=y
+# Custom layout: 4MB app + 12MB SPIFFS data (for avatar, profile, config)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 
 # --- WiFi ---
 CONFIG_ESP_WIFI_STATIC_RX_BUFFER_NUM=10
