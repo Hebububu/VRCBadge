@@ -1,8 +1,12 @@
 mod display;
+mod http;
 mod platform;
 mod touch;
+mod wifi;
 
 use esp_idf_hal::peripherals::Peripherals;
+use esp_idf_svc::eventloop::EspSystemEventLoop;
+use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_sys as _;
 
 use crate::display::DisplayLineBuffer;
@@ -19,6 +23,12 @@ fn main() -> anyhow::Result<()> {
 
     // Take hardware peripherals
     let peripherals = Peripherals::take()?;
+
+    // --- WiFi AP + HTTP server ---
+    let sys_loop = EspSystemEventLoop::take()?;
+    let nvs_partition = EspDefaultNvsPartition::take()?;
+    let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    let _server = http::init()?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
