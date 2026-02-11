@@ -83,11 +83,17 @@ fn main() -> anyhow::Result<()> {
     ui.set_discord_handle("hebu".into());
     ui.set_battery_percent(100);
 
-    // Wire brightness slider to backlight PWM
+    // Wire brightness slider to backlight PWM (debounced to avoid flicker)
     let backlight = RefCell::new(backlight);
+    let last_brightness = RefCell::new(50.0_f32);
     ui.on_brightness_changed(move |percent| {
-        let duty = (percent.clamp(10.0, 100.0) / 100.0 * max_duty as f32) as u32;
-        let _ = backlight.borrow_mut().set_duty(duty);
+        let clamped = percent.clamp(10.0, 100.0);
+        let mut last = last_brightness.borrow_mut();
+        if (clamped - *last).abs() >= 2.0 {
+            *last = clamped;
+            let duty = (clamped / 100.0 * max_duty as f32) as u32;
+            let _ = backlight.borrow_mut().set_duty(duty);
+        }
     });
 
     log::info!("UI initialized, entering main loop");
