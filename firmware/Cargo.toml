@@ -32,5 +32,5 @@ log = "0.4"
 anyhow = "1"
 
 [build-dependencies]
-slint-build = "1.15"
+slint-build = { version = "1.15", features = ["sdf-fonts"] }
 embuild = "0.33"
