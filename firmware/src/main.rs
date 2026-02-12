@@ -1,4 +1,5 @@
 mod display;
+mod dns;
 mod http;
 mod platform;
 mod touch;
@@ -34,6 +35,7 @@ fn main() -> anyhow::Result<()> {
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    dns::start()?;
     let pending_background: http::SharedImageData = Arc::new(Mutex::new(None));
     let _server = http::init(pending_background.clone())?;
 

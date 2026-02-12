@@ -85,6 +85,18 @@ function upload(){
 </body>
 </html>"#;
 
+/// Redirect handler for captive portal detection probes.
+///
+/// Returns a 302 redirect to `http://192.168.4.1/` so that the OS opens the
+/// captive portal page automatically.
+fn redirect_to_portal(
+    req: esp_idf_svc::http::server::Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
+) -> Result<(), esp_idf_svc::io::EspIOError> {
+    let mut resp = req.into_response(302, Some("Found"), &[("Location", "http://192.168.4.1/")])?;
+    resp.write_all(b"Redirecting...")?;
+    Ok(())
+}
+
 /// Start the HTTP server and register API routes.
 ///
 /// Takes shared state for passing background image data to the main loop.
@@ -92,8 +104,8 @@ function upload(){
 pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer<'static>> {
     let config = Configuration {
         http_port: 80,
-        stack_size: 10240,
-        max_uri_handlers: 8,
+        stack_size: 16384,
+        max_uri_handlers: 16,
         ..Default::default()
     };
 
@@ -101,9 +113,27 @@ pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer
 
     // Upload page
     server.fn_handler("/", Method::Get, |req| {
-        let mut resp = req.into_ok_response()?;
+        let mut resp = req.into_response(
+            200,
+            Some("OK"),
+            &[("Content-Type", "text/html; charset=utf-8")],
+        )?;
         resp.write_all(UPLOAD_HTML.as_bytes()).map(|_| ())
     })?;
+
+    // --- Captive portal detection endpoints ---
+    // Android / Chrome OS
+    server.fn_handler("/generate_204", Method::Get, redirect_to_portal)?;
+    // Apple iOS / macOS
+    server.fn_handler("/hotspot-detect.html", Method::Get, redirect_to_portal)?;
+    // Windows
+    server.fn_handler("/connecttest.txt", Method::Get, redirect_to_portal)?;
+    server.fn_handler("/redirect", Method::Get, redirect_to_portal)?;
+    // Firefox
+    server.fn_handler("/canonical.html", Method::Get, redirect_to_portal)?;
+    // Additional common captive portal probe paths
+    server.fn_handler("/ncsi.txt", Method::Get, redirect_to_portal)?;
+    server.fn_handler("/success.txt", Method::Get, redirect_to_portal)?;
 
     // Health check
     server.fn_handler("/api/health", Method::Get, |req| {
@@ -162,6 +192,11 @@ pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer
         );
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
+
+    // Wildcard fallback — must be registered LAST so specific routes take priority.
+    // Catches any unmatched GET request (e.g. captive portal probes we didn't list)
+    // and redirects to the main page.
+    server.fn_handler("/*", Method::Get, redirect_to_portal)?;
 
     log::info!("HTTP server started on port 80");
 
