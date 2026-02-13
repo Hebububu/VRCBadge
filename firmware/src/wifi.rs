@@ -1,3 +1,5 @@
+use std::net::Ipv4Addr;
+
 use esp_idf_hal::modem::Modem;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
@@ -8,12 +10,13 @@ use esp_idf_sys::{esp, esp_wifi_ap_get_sta_list, wifi_sta_list_t};
 
 /// Initialize WiFi in AP mode.
 ///
-/// Returns the WiFi handle — caller must hold it to keep the AP alive.
+/// Returns the WiFi handle and the AP's actual IP address.
+/// Caller must hold the handle to keep the AP alive.
 pub fn init(
     modem: Modem,
     sys_loop: EspSystemEventLoop,
     nvs: EspDefaultNvsPartition,
-) -> anyhow::Result<BlockingWifi<EspWifi<'static>>> {
+) -> anyhow::Result<(BlockingWifi<EspWifi<'static>>, Ipv4Addr)> {
     let mut wifi = BlockingWifi::wrap(EspWifi::new(modem, sys_loop.clone(), Some(nvs))?, sys_loop)?;
 
     wifi.set_configuration(&Configuration::AccessPoint(AccessPointConfiguration {
@@ -27,9 +30,12 @@ pub fn init(
     wifi.start()?;
     wifi.wait_netif_up()?;
 
-    log::info!("WiFi AP started — SSID: VRCBadge, IP: 192.168.4.1");
+    let ip_info = wifi.wifi().ap_netif().get_ip_info()?;
+    let ip = Ipv4Addr::from(ip_info.ip.octets());
 
-    Ok(wifi)
+    log::info!("WiFi AP started — SSID: VRCBadge, IP: {ip}");
+
+    Ok((wifi, ip))
 }
 
 /// Query the number of stations currently connected to the AP.

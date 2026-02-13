@@ -1,4 +1,5 @@
 mod display;
+mod dns;
 mod http;
 mod platform;
 mod touch;
@@ -31,8 +32,9 @@ fn main() -> anyhow::Result<()> {
     // --- WiFi AP + HTTP server ---
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
-    let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
-    let _server = http::init()?;
+    let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    dns::start(ap_ip)?;
+    let _server = http::init(ap_ip)?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
@@ -82,6 +84,7 @@ fn main() -> anyhow::Result<()> {
     ui.set_twitter_handle("@Hebu_VRC".into());
     ui.set_discord_handle("hebu".into());
     ui.set_battery_percent(100);
+    ui.set_wifi_ip(ap_ip.to_string().into());
 
     // Wire brightness slider to backlight PWM (debounced to avoid flicker)
     let backlight = RefCell::new(backlight);

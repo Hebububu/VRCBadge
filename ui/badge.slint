@@ -409,6 +409,7 @@ component SettingsPage inherits Rectangle {
 // --- WiFi Info Page ---
 component WiFiPage inherits Rectangle {
     in property <int> connected-clients: 0;
+    in property <string> ip-address: "192.168.71.1";
 
     callback go-back();
 
@@ -465,7 +466,7 @@ component WiFiPage inherits Rectangle {
         for item in [
             { label: "Mode", value: "AP Mode" },
             { label: "SSID", value: "VRCBadge" },
-            { label: "IP Address", value: "192.168.4.1" },
+            { label: "IP Address", value: root.ip-address },
         ]: Rectangle {
             height: 48px;
             background: transparent;
@@ -547,6 +548,7 @@ export component BadgeUI inherits Window {
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 85;
     in-out property <int> wifi-clients: 0;
+    in-out property <string> wifi-ip: "192.168.71.1";
     in-out property <float> display-brightness: 50;
     in-out property <int> current-page: 0;
 
@@ -587,6 +589,7 @@ export component BadgeUI inherits Window {
     wifi-page := WiFiPage {
         visible: root.current-page == 2;
         connected-clients: root.wifi-clients;
+        ip-address: root.wifi-ip;
 
         go-back => {
             root.current-page = 1;
