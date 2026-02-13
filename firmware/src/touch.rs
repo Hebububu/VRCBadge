@@ -141,29 +141,9 @@ impl<'a> TouchController<'a> {
     pub fn poll(&mut self, window: &MinimalSoftwareWindow) {
         self.poll_count = self.poll_count.wrapping_add(1);
 
-        // Log stats every ~500 polls (~8 seconds at 60fps)
-        if self.poll_count % 500 == 0 {
-            log::info!(
-                "Touch stats: polls={}, not_ready={}, touches={}, errors={}",
-                self.poll_count,
-                self.not_ready_count,
-                self.touch_count,
-                self.error_count
-            );
-        }
-
         match self.driver.get_touch(&mut self.i2c) {
             Ok(Some(point)) => {
                 self.touch_count = self.touch_count.wrapping_add(1);
-
-                log::info!(
-                    "TOUCH: raw x={}, y={}, area={} | display={}x{}",
-                    point.x,
-                    point.y,
-                    point.area,
-                    DISPLAY_WIDTH,
-                    DISPLAY_HEIGHT
-                );
 
                 // GT911 reports in portrait (x=0..319, y=0..479).
                 // Display is landscape (480x320). Transform coordinates:
@@ -195,11 +175,6 @@ impl<'a> TouchController<'a> {
             Ok(None) => {
                 // Finger lifted
                 if self.state == TouchState::Pressed {
-                    log::info!(
-                        "TOUCH: released at ({}, {})",
-                        self.last_position.x,
-                        self.last_position.y
-                    );
                     window.dispatch_event(WindowEvent::PointerReleased {
                         position: self.last_position,
                         button: PointerEventButton::Left,

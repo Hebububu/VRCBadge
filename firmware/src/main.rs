@@ -1,12 +1,15 @@
 mod display;
 mod dns;
 mod http;
+mod logger;
 mod platform;
+mod sysinfo;
 mod touch;
 mod wifi;
 
 use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::peripherals::Peripherals;
@@ -23,8 +26,9 @@ use crate::touch::TouchController;
 slint::include_modules!();
 
 fn main() -> anyhow::Result<()> {
-    // Initialize ESP-IDF logging + system
-    esp_idf_svc::log::EspLogger::initialize_default();
+    // Initialize dual logger (serial + ring buffer for About page)
+    logger::init();
+    let boot_time = Instant::now();
     log::info!("VRCBadge firmware starting");
 
     // Take hardware peripherals
@@ -54,7 +58,7 @@ fn main() -> anyhow::Result<()> {
         peripherals.pins.gpio8.into(),  // RST
     )?;
 
-    // --- Framebuffer (480×320 RGB565 in PSRAM) ---
+    // --- Framebuffer (480x320 RGB565 in PSRAM) ---
     let framebuffer = display::allocate_framebuffer();
 
     // --- Backlight PWM (25kHz, 8-bit = 256 duty levels) ---
@@ -93,6 +97,7 @@ fn main() -> anyhow::Result<()> {
     ui.set_discord_handle("hebu".into());
     ui.set_battery_percent(100);
     ui.set_wifi_ip(ap_ip.to_string().into());
+    ui.set_firmware_version(sysinfo::firmware_version().into());
 
     // Wire brightness slider to backlight PWM (debounced to avoid flicker)
     let backlight = RefCell::new(backlight);
@@ -107,7 +112,7 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
-    log::info!("UI initialized, entering main loop");
+    log::info!("Boot complete, entering main loop");
 
     // --- Main event loop ---
     let mut loop_count: u32 = 0;
@@ -115,7 +120,7 @@ fn main() -> anyhow::Result<()> {
         // 1. Process Slint timers and animations
         slint::platform::update_timers_and_animations();
 
-        // 2. Poll touch input → dispatch events to Slint
+        // 2. Poll touch input -> dispatch events to Slint
         if let Some(ref mut touch) = touch {
             touch.poll(&window);
         }
@@ -126,6 +131,12 @@ fn main() -> anyhow::Result<()> {
             // WiFi client count
             let clients = wifi::connected_clients() as i32;
             ui.set_wifi_clients(clients);
+
+            // About page: system info + logs
+            ui.set_about_uptime(sysinfo::uptime_string(&boot_time).into());
+            ui.set_about_heap(format!("{} KB", sysinfo::free_heap_kb()).into());
+            ui.set_about_psram(format!("{} KB", sysinfo::free_psram_kb()).into());
+            ui.set_log_text(logger::snapshot().into());
 
             // Check for new background image from HTTP upload
             if let Ok(mut pending) = pending_background.try_lock() {
@@ -154,7 +165,7 @@ fn main() -> anyhow::Result<()> {
                 let sleep_ms = duration.as_millis().min(16) as u32; // Cap at ~60fps for touch
                 esp_idf_hal::delay::FreeRtos::delay_ms(sleep_ms);
             } else {
-                // No timers pending — sleep briefly for touch responsiveness
+                // No timers pending -- sleep briefly for touch responsiveness
                 esp_idf_hal::delay::FreeRtos::delay_ms(16);
             }
         }
