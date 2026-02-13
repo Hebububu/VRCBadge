@@ -16,7 +16,6 @@ use esp_idf_svc::nvs::EspDefaultNvsPartition;
 use esp_idf_sys as _;
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
-use crate::display::DisplayLineBuffer;
 use crate::platform::Esp32Platform;
 use crate::touch::TouchController;
 
@@ -54,6 +53,9 @@ fn main() -> anyhow::Result<()> {
         peripherals.pins.gpio9.into(),  // DC
         peripherals.pins.gpio8.into(),  // RST
     )?;
+
+    // --- Framebuffer (480×320 RGB565 in PSRAM) ---
+    let framebuffer = display::allocate_framebuffer();
 
     // --- Backlight PWM (25kHz, 8-bit = 256 duty levels) ---
     let timer = LedcTimerDriver::new(
@@ -139,9 +141,10 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        // 4. Render display if needed
+        // 4. Render into framebuffer and send only dirty regions to display
         window.draw_if_needed(|renderer| {
-            renderer.render_by_line(DisplayLineBuffer::new(&mut display));
+            let region = renderer.render(framebuffer, platform::DISPLAY_WIDTH as usize);
+            display::send_dirty_region(&mut display, framebuffer, region);
         });
 
         // 5. Sleep until next event needed

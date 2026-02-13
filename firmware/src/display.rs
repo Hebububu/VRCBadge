@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use embedded_graphics_core::pixelcolor::raw::RawU16;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use esp_idf_hal::delay::FreeRtos;
@@ -10,7 +8,7 @@ use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7796;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
 use mipidsi::{Builder, Display};
-use slint::platform::software_renderer::{LineBufferProvider, Rgb565Pixel};
+use slint::platform::software_renderer::{PhysicalRegion, Rgb565Pixel};
 
 use crate::platform::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
@@ -30,11 +28,13 @@ pub type BadgeDisplay = Display<
     PinDriver<'static, AnyOutputPin, esp_idf_hal::gpio::Output>,
 >;
 
-/// SPI/DMA buffer size — leaked to get 'static lifetime for the display interface.
-/// Each display line is 960 bytes (480 pixels × 2 bytes RGB565).
-/// A larger buffer reduces SPI transactions: at 4096 bytes we need 1 transaction per line,
-/// but the DMA setup/teardown overhead per transaction is significant.
+/// SPI/DMA buffer size for the mipidsi SPI interface.
+/// With full-framebuffer rendering, each dirty rect can be thousands of bytes.
+/// DMA excels at large bulk transfers — the setup/teardown overhead is amortized.
 const SPI_BUFFER_SIZE: usize = 4096;
+
+/// Total number of pixels in the framebuffer (480 × 320).
+const FRAMEBUFFER_PIXELS: usize = DISPLAY_WIDTH as usize * DISPLAY_HEIGHT as usize;
 
 /// Initialize the ST7796S display over SPI.
 ///
@@ -56,11 +56,11 @@ pub fn init(
         .baudrate(80_000_000.into())
         .write_only(true);
 
-    // Enable DMA so SPI can transfer up to SPI_BUFFER_SIZE bytes per transaction
-    // instead of being limited to the 64-byte hardware FIFO.
+    // Enable DMA for large bulk transfers. With full-framebuffer rendering,
+    // each dirty rect sends thousands of bytes in a single set_pixels call.
+    // DMA overhead is amortized over the large transfer size.
     let driver_config = DriverConfig::new().dma(Dma::Auto(SPI_BUFFER_SIZE));
 
-    // MISO is not used (display is write-only), pass None with AnyIOPin type
     let spi_driver = SpiDriver::new(spi, sclk, mosi, None::<AnyIOPin>, &driver_config)?;
 
     let spi_device = SpiDeviceDriver::new(spi_driver, Some(cs), &spi_config)?;
@@ -71,8 +71,22 @@ pub fn init(
     // Reset pin
     let rst_pin = PinDriver::output(rst)?;
 
-    // Leak a buffer to get 'static lifetime — needed because Display holds a reference to it
-    let buffer: &'static mut [u8] = Box::leak(Box::new([0u8; SPI_BUFFER_SIZE]));
+    // Allocate SPI interface buffer in DMA-capable internal SRAM.
+    // mipidsi copies pixels from the framebuffer (PSRAM) into this buffer (internal SRAM),
+    // then DMA sends from internal SRAM to the SPI peripheral — no PSRAM bus contention
+    // during the actual SPI transfer.
+    let buffer: &'static mut [u8] = unsafe {
+        let ptr = esp_idf_sys::heap_caps_malloc(
+            SPI_BUFFER_SIZE,
+            esp_idf_sys::MALLOC_CAP_DMA | esp_idf_sys::MALLOC_CAP_INTERNAL,
+        ) as *mut u8;
+        assert!(
+            !ptr.is_null(),
+            "Failed to allocate DMA buffer in internal SRAM"
+        );
+        core::ptr::write_bytes(ptr, 0, SPI_BUFFER_SIZE);
+        core::slice::from_raw_parts_mut(ptr, SPI_BUFFER_SIZE)
+    };
 
     // Build display interface
     let di = SpiInterface::new(spi_device, dc_pin, buffer);
@@ -96,50 +110,78 @@ pub fn init(
     Ok(display)
 }
 
-/// Line buffer provider that renders each Slint line directly to the ST7796S via SPI.
+/// Allocate a full 480×320 RGB565 framebuffer in PSRAM.
 ///
-/// Implements `LineBufferProvider` for Slint's `render_by_line()` strategy.
-/// Each line uses ~960 bytes (480 pixels x 2 bytes RGB565).
-pub struct DisplayLineBuffer<'a> {
-    display: &'a mut BadgeDisplay,
-    line_buffer: [Rgb565Pixel; DISPLAY_WIDTH as usize],
-}
-
-impl<'a> DisplayLineBuffer<'a> {
-    pub fn new(display: &'a mut BadgeDisplay) -> Self {
-        Self {
-            display,
-            line_buffer: [Rgb565Pixel(0); DISPLAY_WIDTH as usize],
-        }
+/// Returns a leaked `'static` slice of `Rgb565Pixel` (307,200 bytes).
+/// Uses `heap_caps_malloc` with `MALLOC_CAP_SPIRAM` to guarantee PSRAM placement,
+/// preserving internal SRAM for stack, DMA buffers, and WiFi.
+pub fn allocate_framebuffer() -> &'static mut [Rgb565Pixel] {
+    let size_bytes = FRAMEBUFFER_PIXELS * core::mem::size_of::<Rgb565Pixel>();
+    unsafe {
+        let ptr = esp_idf_sys::heap_caps_malloc(size_bytes, esp_idf_sys::MALLOC_CAP_SPIRAM)
+            as *mut Rgb565Pixel;
+        assert!(
+            !ptr.is_null(),
+            "Failed to allocate {}KB framebuffer in PSRAM",
+            size_bytes / 1024
+        );
+        core::ptr::write_bytes(ptr, 0, FRAMEBUFFER_PIXELS);
+        log::info!(
+            "Framebuffer allocated: {}KB in PSRAM ({} pixels)",
+            size_bytes / 1024,
+            FRAMEBUFFER_PIXELS
+        );
+        core::slice::from_raw_parts_mut(ptr, FRAMEBUFFER_PIXELS)
     }
 }
 
-impl LineBufferProvider for DisplayLineBuffer<'_> {
-    type TargetPixel = Rgb565Pixel;
+/// Send only the dirty regions from the framebuffer to the display.
+///
+/// `PhysicalRegion` contains up to ~3-7 non-overlapping rectangles from Slint's
+/// dirty tracking. For each rectangle, we send a single `set_pixels` call
+/// (1× CASET + 1× RASET + 1× RAMWR + pixel data stream), which is far more
+/// efficient than the 2,240 transactions needed for line-by-line rendering.
+pub fn send_dirty_region(
+    display: &mut BadgeDisplay,
+    framebuffer: &[Rgb565Pixel],
+    region: PhysicalRegion,
+) {
+    let stride = DISPLAY_WIDTH as usize;
 
-    fn process_line(
-        &mut self,
-        line: usize,
-        range: Range<usize>,
-        render_fn: impl FnOnce(&mut [Rgb565Pixel]),
-    ) {
-        // Let Slint render into our buffer
-        render_fn(&mut self.line_buffer[range.clone()]);
+    for (pos, size) in region.iter() {
+        let x = pos.x as usize;
+        let y = pos.y as usize;
+        let w = size.width as usize;
+        let h = size.height as usize;
 
-        // Convert Rgb565Pixel to mipidsi-compatible colors and send to display
-        let pixels = self.line_buffer[range.clone()]
-            .iter()
-            .map(|p| Rgb565::from(RawU16::new(p.0)));
+        if w == 0 || h == 0 {
+            continue;
+        }
 
-        // set_pixels takes inclusive start/end coordinates
-        if let Err(e) = self.display.set_pixels(
-            range.start as u16,
-            line as u16,
-            range.end.saturating_sub(1) as u16,
-            line as u16,
+        // Extract pixels from the framebuffer in row-major order.
+        // This is zero-copy — the iterator lazily reads from PSRAM and mipidsi
+        // batches pixels into the 4KB internal SRAM SPI buffer before DMA-sending.
+        let pixels = (y..(y + h)).flat_map(move |row| {
+            framebuffer[row * stride + x..row * stride + x + w]
+                .iter()
+                .map(|p| Rgb565::from(RawU16::new(p.0)))
+        });
+
+        if let Err(e) = display.set_pixels(
+            x as u16,
+            y as u16,
+            (x + w - 1) as u16,
+            (y + h - 1) as u16,
             pixels,
         ) {
-            log::error!("Display SPI write failed at line {}: {:?}", line, e);
+            log::error!(
+                "Display SPI write failed for rect ({},{} {}x{}): {:?}",
+                x,
+                y,
+                w,
+                h,
+                e
+            );
         }
     }
 }

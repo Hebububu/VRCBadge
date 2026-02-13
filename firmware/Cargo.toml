@@ -31,6 +31,11 @@ log = "0.4"
 # Error handling
 anyhow = "1"
 
+[profile.release]
+opt-level = 2
+lto = "thin"
+debug = true  # Keep debug info for backtraces on panic
+
 [build-dependencies]
 slint-build = { version = "1.15", features = ["sdf-fonts"] }
 embuild = "0.33"

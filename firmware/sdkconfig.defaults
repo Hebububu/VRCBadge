@@ -12,7 +12,7 @@ CONFIG_SPI_MASTER_IN_IRAM=y
 # Default I2C config is fine; driver configured in code
 
 # --- Stack sizes ---
-CONFIG_ESP_MAIN_TASK_STACK_SIZE=65536
+CONFIG_ESP_MAIN_TASK_STACK_SIZE=32768
 CONFIG_PTHREAD_TASK_STACK_SIZE_DEFAULT=8192
 
 # --- Partition table ---
