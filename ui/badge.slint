@@ -36,7 +36,7 @@ component BadgePage inherits Rectangle {
             x: 190px;
             width: 270px;
             text: root.tagline;
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 500;
             color: #e0e8f0;
             vertical-alignment: center;
@@ -104,7 +104,7 @@ component BadgePage inherits Rectangle {
 
         Text {
             text: root.twitter-handle;
-            font-size: 13px;
+            font-size: 14px;
             color: #1da1f2;
             vertical-alignment: center;
         }
@@ -132,7 +132,7 @@ component BadgePage inherits Rectangle {
 
         Text {
             text: root.discord-handle;
-            font-size: 13px;
+            font-size: 14px;
             color: #7289da;
             vertical-alignment: center;
         }
@@ -161,7 +161,7 @@ component BadgePage inherits Rectangle {
 
             Text {
                 text: root.battery-percent + "%";
-                font-size: 13px;
+                font-size: 14px;
                 font-weight: 700;
                 color: root.battery-percent > 20 ? #4caf50 : #f44336;
                 vertical-alignment: center;
@@ -319,7 +319,7 @@ component SettingsPage inherits Rectangle {
 
                     Text {
                         text: Math.round(root.brightness) + "%";
-                        font-size: 14px;
+                        font-size: 16px;
                         color: #888888;
                         vertical-alignment: center;
                     }
@@ -490,14 +490,14 @@ component WiFiPage inherits Rectangle {
 
                 Text {
                     text: item.label;
-                    font-size: 15px;
+                    font-size: 16px;
                     color: #888888;
                     vertical-alignment: center;
                 }
 
                 Text {
                     text: item.value;
-                    font-size: 15px;
+                    font-size: 16px;
                     color: #ffffff;
                     vertical-alignment: center;
                 }
@@ -524,14 +524,14 @@ component WiFiPage inherits Rectangle {
 
                 Text {
                     text: "Connected Clients";
-                    font-size: 15px;
+                    font-size: 16px;
                     color: #888888;
                     vertical-alignment: center;
                 }
 
                 Text {
                     text: root.connected-clients == 0 ? "None" : root.connected-clients + "";
-                    font-size: 15px;
+                    font-size: 16px;
                     color: root.connected-clients > 0 ? #4caf50 : #ffffff;
                     vertical-alignment: center;
                 }

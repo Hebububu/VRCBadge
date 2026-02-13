@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 # UI
-slint = { version = "1.15", default-features = false, features = [
+slint = { version = "1.15.1", default-features = false, features = [
     "compat-1-2",
     "renderer-software",
     "unsafe-single-threaded",
@@ -37,5 +37,5 @@ lto = "thin"
 debug = true  # Keep debug info for backtraces on panic
 
 [build-dependencies]
-slint-build = { version = "1.15", features = ["sdf-fonts"] }
+slint-build = "1.15.1"
 embuild = "0.33"
