@@ -1,8 +1,9 @@
+use std::net::Ipv4Addr;
 use std::sync::{Arc, Mutex};
 
 use esp_idf_svc::http::server::{Configuration, EspHttpServer};
 use esp_idf_svc::http::Method;
-use esp_idf_svc::io::Write;
+use esp_idf_svc::io::{EspIOError, Write};
 
 use crate::platform::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
@@ -85,23 +86,29 @@ function upload(){
 </body>
 </html>"#;
 
-/// Redirect handler for captive portal detection probes.
-///
-/// Returns a 302 redirect to `http://192.168.4.1/` so that the OS opens the
-/// captive portal page automatically.
-fn redirect_to_portal(
-    req: esp_idf_svc::http::server::Request<&mut esp_idf_svc::http::server::EspHttpConnection>,
-) -> Result<(), esp_idf_svc::io::EspIOError> {
-    let mut resp = req.into_response(302, Some("Found"), &[("Location", "http://192.168.4.1/")])?;
-    resp.write_all(b"Redirecting...")?;
+/// Register a GET handler that returns a 302 redirect to `url`.
+fn register_redirect(
+    server: &mut EspHttpServer<'static>,
+    path: &str,
+    url: String,
+) -> anyhow::Result<()> {
+    server.fn_handler(path, Method::Get, move |req| -> Result<(), EspIOError> {
+        let mut resp = req.into_response(302, Some("Found"), &[("Location", &url)])?;
+        resp.write_all(b"Redirecting...")?;
+        Ok(())
+    })?;
     Ok(())
 }
 
 /// Start the HTTP server and register API routes.
 ///
+/// `ap_ip` is the AP's actual IP address, used for captive portal redirects.
 /// Takes shared state for passing background image data to the main loop.
 /// Returns the server handle — caller must hold it to keep the server alive.
-pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer<'static>> {
+pub fn init(
+    ap_ip: Ipv4Addr,
+    pending_background: SharedImageData,
+) -> anyhow::Result<EspHttpServer<'static>> {
     let config = Configuration {
         http_port: 80,
         stack_size: 16384,
@@ -110,6 +117,8 @@ pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer
     };
 
     let mut server = EspHttpServer::new(&config)?;
+
+    let redirect_url = format!("http://{ap_ip}/");
 
     // Upload page
     server.fn_handler("/", Method::Get, |req| {
@@ -121,19 +130,19 @@ pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer
         resp.write_all(UPLOAD_HTML.as_bytes()).map(|_| ())
     })?;
 
-    // --- Captive portal detection endpoints ---
-    // Android / Chrome OS
-    server.fn_handler("/generate_204", Method::Get, redirect_to_portal)?;
-    // Apple iOS / macOS
-    server.fn_handler("/hotspot-detect.html", Method::Get, redirect_to_portal)?;
-    // Windows
-    server.fn_handler("/connecttest.txt", Method::Get, redirect_to_portal)?;
-    server.fn_handler("/redirect", Method::Get, redirect_to_portal)?;
-    // Firefox
-    server.fn_handler("/canonical.html", Method::Get, redirect_to_portal)?;
-    // Additional common captive portal probe paths
-    server.fn_handler("/ncsi.txt", Method::Get, redirect_to_portal)?;
-    server.fn_handler("/success.txt", Method::Get, redirect_to_portal)?;
+    // Captive portal detection endpoints
+    let captive_paths = [
+        "/generate_204",        // Android / Chrome OS
+        "/hotspot-detect.html", // Apple iOS / macOS
+        "/connecttest.txt",     // Windows
+        "/redirect",            // Windows secondary
+        "/canonical.html",      // Firefox
+        "/ncsi.txt",            // Windows NCSI
+        "/success.txt",         // Various
+    ];
+    for path in captive_paths {
+        register_redirect(&mut server, path, redirect_url.clone())?;
+    }
 
     // Health check
     server.fn_handler("/api/health", Method::Get, |req| {
@@ -193,10 +202,8 @@ pub fn init(pending_background: SharedImageData) -> anyhow::Result<EspHttpServer
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
 
-    // Wildcard fallback — must be registered LAST so specific routes take priority.
-    // Catches any unmatched GET request (e.g. captive portal probes we didn't list)
-    // and redirects to the main page.
-    server.fn_handler("/*", Method::Get, redirect_to_portal)?;
+    // Wildcard fallback — registered last so specific routes take priority
+    register_redirect(&mut server, "/*", redirect_url)?;
 
     log::info!("HTTP server started on port 80");
 

@@ -34,10 +34,10 @@ fn main() -> anyhow::Result<()> {
     // --- WiFi AP + HTTP server ---
     let sys_loop = EspSystemEventLoop::take()?;
     let nvs_partition = EspDefaultNvsPartition::take()?;
-    let _wifi = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
-    dns::start()?;
+    let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    dns::start(ap_ip)?;
     let pending_background: http::SharedImageData = Arc::new(Mutex::new(None));
-    let _server = http::init(pending_background.clone())?;
+    let _server = http::init(ap_ip, pending_background.clone())?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
@@ -67,13 +67,19 @@ fn main() -> anyhow::Result<()> {
     backlight.set_duty(max_duty / 2)?; // Start at 50% brightness
 
     // --- Touch (GT911 over I2C) ---
-    let mut touch = TouchController::new(
+    let mut touch = match TouchController::new(
         peripherals.i2c0,
         peripherals.pins.gpio1.into(), // SDA
         peripherals.pins.gpio2.into(), // SCL
         peripherals.pins.gpio4.into(), // Touch RST
-        peripherals.pins.gpio3.into(), // Touch INT — TODO: verify correct GPIO for ESP32-S3 wiring
-    )?;
+        peripherals.pins.gpio3.into(), // Touch INT
+    ) {
+        Ok(t) => Some(t),
+        Err(e) => {
+            log::warn!("Touch init failed (display/WiFi still active): {e}");
+            None
+        }
+    };
 
     // --- Create UI ---
     let ui = BadgeUI::new().map_err(|e| anyhow::anyhow!("Failed to create UI: {:?}", e))?;
@@ -84,6 +90,7 @@ fn main() -> anyhow::Result<()> {
     ui.set_twitter_handle("@Hebu_VRC".into());
     ui.set_discord_handle("hebu".into());
     ui.set_battery_percent(100);
+    ui.set_wifi_ip(ap_ip.to_string().into());
 
     // Wire brightness slider to backlight PWM (debounced to avoid flicker)
     let backlight = RefCell::new(backlight);
@@ -107,7 +114,9 @@ fn main() -> anyhow::Result<()> {
         slint::platform::update_timers_and_animations();
 
         // 2. Poll touch input → dispatch events to Slint
-        touch.poll(&window);
+        if let Some(ref mut touch) = touch {
+            touch.poll(&window);
+        }
 
         // 3. Poll for updates (~every 2 seconds at 16ms sleep = 125 iterations)
         loop_count = loop_count.wrapping_add(1);

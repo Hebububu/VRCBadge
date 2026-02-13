@@ -4,8 +4,8 @@ use embedded_graphics_core::pixelcolor::raw::RawU16;
 use embedded_graphics_core::pixelcolor::Rgb565;
 use esp_idf_hal::delay::FreeRtos;
 use esp_idf_hal::gpio::{AnyIOPin, AnyOutputPin, PinDriver};
-use esp_idf_hal::spi::config::Config as SpiConfig;
-use esp_idf_hal::spi::{SpiDeviceDriver, SpiDriver, SPI2};
+use esp_idf_hal::spi::config::{Config as SpiConfig, DriverConfig};
+use esp_idf_hal::spi::{Dma, SpiDeviceDriver, SpiDriver, SPI2};
 use mipidsi::interface::SpiInterface;
 use mipidsi::models::ST7796;
 use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
@@ -30,8 +30,11 @@ pub type BadgeDisplay = Display<
     PinDriver<'static, AnyOutputPin, esp_idf_hal::gpio::Output>,
 >;
 
-/// SPI transfer buffer — leaked to get 'static lifetime for the display interface.
-const SPI_BUFFER_SIZE: usize = 512;
+/// SPI/DMA buffer size — leaked to get 'static lifetime for the display interface.
+/// Each display line is 960 bytes (480 pixels × 2 bytes RGB565).
+/// A larger buffer reduces SPI transactions: at 4096 bytes we need 1 transaction per line,
+/// but the DMA setup/teardown overhead per transaction is significant.
+const SPI_BUFFER_SIZE: usize = 4096;
 
 /// Initialize the ST7796S display over SPI.
 ///
@@ -44,11 +47,21 @@ pub fn init(
     dc: AnyOutputPin,
     rst: AnyOutputPin,
 ) -> anyhow::Result<BadgeDisplay> {
-    // Configure SPI bus — ST7796S supports up to 80MHz, start at 40MHz for reliability
-    let spi_config = SpiConfig::new().baudrate(40_000_000.into());
+    // Configure SPI bus — 80MHz with write_only mode (no dummy bytes).
+    // write_only sets SPI_DEVICE_NO_DUMMY, removing the dummy clock cycle normally
+    // inserted for full-duplex reads, which unlocks 80MHz on the ESP32-S3.
+    // ST7796S datasheet specifies 66MHz write max, but 80MHz works in practice.
+    // If display shows glitches, reduce to 40_000_000.
+    let spi_config = SpiConfig::new()
+        .baudrate(80_000_000.into())
+        .write_only(true);
+
+    // Enable DMA so SPI can transfer up to SPI_BUFFER_SIZE bytes per transaction
+    // instead of being limited to the 64-byte hardware FIFO.
+    let driver_config = DriverConfig::new().dma(Dma::Auto(SPI_BUFFER_SIZE));
 
     // MISO is not used (display is write-only), pass None with AnyIOPin type
-    let spi_driver = SpiDriver::new(spi, sclk, mosi, None::<AnyIOPin>, &Default::default())?;
+    let spi_driver = SpiDriver::new(spi, sclk, mosi, None::<AnyIOPin>, &driver_config)?;
 
     let spi_device = SpiDeviceDriver::new(spi_driver, Some(cs), &spi_config)?;
 
@@ -119,12 +132,14 @@ impl LineBufferProvider for DisplayLineBuffer<'_> {
             .map(|p| Rgb565::from(RawU16::new(p.0)));
 
         // set_pixels takes inclusive start/end coordinates
-        let _ = self.display.set_pixels(
+        if let Err(e) = self.display.set_pixels(
             range.start as u16,
             line as u16,
             range.end.saturating_sub(1) as u16,
             line as u16,
             pixels,
-        );
+        ) {
+            log::error!("Display SPI write failed at line {}: {:?}", line, e);
+        }
     }
 }

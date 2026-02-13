@@ -9,11 +9,13 @@ use slint::LogicalPosition;
 use crate::platform::DISPLAY_HEIGHT;
 use crate::platform::DISPLAY_WIDTH;
 
-/// GT911 default I2C address.
-const GT911_ADDR: u8 = 0x5D;
+/// GT911 I2C addresses — address depends on INT pin state during reset.
+const GT911_ADDR_LOW: u8 = 0x5D; // INT low during reset
+const GT911_ADDR_HIGH: u8 = 0x14; // INT high during reset
 
-/// I2C bus speed — GT911 supports up to 400kHz.
-const I2C_FREQ: u32 = 400_000;
+/// I2C bus speed — use 100kHz (standard mode) for reliability with internal pull-ups.
+/// The ESP32-S3's internal pull-ups (~45kΩ) are too weak for 400kHz fast mode.
+const I2C_FREQ: u32 = 100_000;
 
 /// Touch state machine — tracks whether a finger is currently down.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -40,6 +42,10 @@ impl<'a> TouchController<'a> {
     /// Sets up I2C bus and performs GT911 init sequence.
     /// The INT pin must be driven LOW during reset to select I2C address 0x5D,
     /// then set to floating (open-drain high) so the GT911 can drive it as data-ready.
+    ///
+    /// Because GPIO 3 (INT) is an ESP32-S3 strapping pin with a default pull-up,
+    /// the GT911 may latch address 0x14 if it powers up before the firmware runs.
+    /// This function tries both addresses.
     pub fn new(
         i2c: I2C0,
         sda: AnyIOPin,
@@ -56,19 +62,21 @@ impl<'a> TouchController<'a> {
         let mut int_pin = PinDriver::output(int)?;
         int_pin.set_low()?;
 
-        // 2. Pull RST low for >= 1ms (we use 10ms)
+        // 2. Pull RST low for >= 10ms (we use 20ms for reliability)
         let mut rst_pin = PinDriver::output(rst)?;
         rst_pin.set_low()?;
-        esp_idf_hal::delay::FreeRtos::delay_ms(10);
+        esp_idf_hal::delay::FreeRtos::delay_ms(20);
 
         // 3. Release RST high — GT911 latches INT state as address select
         rst_pin.set_high()?;
         esp_idf_hal::delay::FreeRtos::delay_ms(5);
 
+        // Keep RST pin driven HIGH — GT911 needs RST held high for normal operation.
+        // Without this, the PinDriver drop would disable GPIO 4, causing it to float.
+        core::mem::forget(rst_pin);
+
         // 4. Reconfigure INT as input with pull-down after address is latched.
         //    The GT911 drives INT as an open-drain output to signal data-ready.
-        //    We must NOT use output mode (fights GT911) or input_output_od
-        //    (some GPIOs have alternate SPI functions, OD mode interferes with SPI display).
         //    Plain input mode lets GT911 freely drive the line.
         //    Pull-down keeps the line low when GT911 isn't driving it.
         //
@@ -79,23 +87,19 @@ impl<'a> TouchController<'a> {
         int_input.set_pull(Pull::Down)?;
         core::mem::forget(int_input);
 
-        // 5. Wait for GT911 to fully boot
-        esp_idf_hal::delay::FreeRtos::delay_ms(50);
+        // 5. Wait for GT911 to fully boot (100ms for extra margin)
+        esp_idf_hal::delay::FreeRtos::delay_ms(100);
 
-        // Configure I2C
+        // Configure I2C with explicit pull-ups enabled
         let i2c_config = I2cConfig::new().baudrate(I2C_FREQ.into());
         let mut i2c_driver = I2cDriver::new(i2c, sda, scl, &i2c_config)?;
 
-        // Initialize GT911
-        let driver = Gt911Blocking::new(GT911_ADDR);
-        driver
-            .init(&mut i2c_driver)
-            .map_err(|e| anyhow::anyhow!("GT911 init failed: {:?}", e))?;
+        // Try address 0x5D first (INT was low during reset), then fall back to 0x14
+        // (GT911 may have latched 0x14 if it powered up while GPIO 3 was high during
+        // ESP32-S3 boot — GPIO 3 is a strapping pin with a default pull-up).
+        let (driver, addr) = Self::init_with_address_scan(&mut i2c_driver)?;
 
-        log::info!(
-            "GT911 touch controller initialized (addr: 0x{:02X})",
-            GT911_ADDR
-        );
+        log::info!("GT911 touch controller initialized (addr: 0x{:02X})", addr);
 
         Ok(Self {
             driver,
@@ -107,6 +111,26 @@ impl<'a> TouchController<'a> {
             touch_count: 0,
             error_count: 0,
         })
+    }
+
+    /// Try initializing the GT911 at address 0x5D, then 0x14 if that fails.
+    fn init_with_address_scan(
+        i2c: &mut I2cDriver<'a>,
+    ) -> anyhow::Result<(Gt911Blocking<I2cDriver<'a>>, u8)> {
+        for &addr in &[GT911_ADDR_LOW, GT911_ADDR_HIGH] {
+            log::info!("Trying GT911 at address 0x{:02X}...", addr);
+            let driver = Gt911Blocking::new(addr);
+            match driver.init(i2c) {
+                Ok(()) => return Ok((driver, addr)),
+                Err(e) => {
+                    log::warn!("GT911 at 0x{:02X} failed: {:?}", addr, e);
+                }
+            }
+        }
+
+        Err(anyhow::anyhow!(
+            "GT911 not found at 0x5D or 0x14 — check I2C wiring (SDA=GPIO1, SCL=GPIO2)"
+        ))
     }
 
     /// Poll touch input and dispatch events to the Slint window.

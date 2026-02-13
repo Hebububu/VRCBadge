@@ -20,7 +20,7 @@ pub struct Esp32Platform {
 
 impl Esp32Platform {
     pub fn new() -> Self {
-        let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+        let window = MinimalSoftwareWindow::new(RepaintBufferType::ReusedBuffer);
         window.set_size(PhysicalSize::new(DISPLAY_WIDTH, DISPLAY_HEIGHT));
 
         Self {

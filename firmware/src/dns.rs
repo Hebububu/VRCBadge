@@ -1,8 +1,5 @@
-use std::net::UdpSocket;
+use std::net::{Ipv4Addr, UdpSocket};
 use std::thread;
-
-/// IP address to resolve all DNS queries to (192.168.4.1).
-const CAPTIVE_PORTAL_IP: [u8; 4] = [192, 168, 4, 1];
 
 /// Minimum valid DNS query size: 12-byte header + at least 1 byte question.
 const MIN_DNS_QUERY_LEN: usize = 13;
@@ -10,13 +7,15 @@ const MIN_DNS_QUERY_LEN: usize = 13;
 /// Start the captive-portal DNS server on a background thread.
 ///
 /// Binds a UDP socket to port 53 and responds to every A-record query with
-/// `192.168.4.1`. This forces all DNS resolution on the AP network to point
+/// the given `ip`. This forces all DNS resolution on the AP network to point
 /// to the ESP32, enabling captive-portal detection on iOS, Android and Windows.
 ///
 /// The thread is spawned as a daemon — caller does not need to hold a handle.
-pub fn start() -> anyhow::Result<()> {
+pub fn start(ip: Ipv4Addr) -> anyhow::Result<()> {
     let socket = UdpSocket::bind("0.0.0.0:53")?;
-    log::info!("DNS captive-portal server listening on :53");
+    log::info!("DNS captive-portal server listening on :53 (-> {ip})");
+
+    let ip_octets = ip.octets();
 
     thread::Builder::new()
         .name("dns-server".into())
@@ -36,7 +35,7 @@ pub fn start() -> anyhow::Result<()> {
                     continue;
                 }
 
-                if let Some(response) = build_response(&buf[..len]) {
+                if let Some(response) = build_response(&buf[..len], &ip_octets) {
                     if let Err(e) = socket.send_to(&response, src) {
                         log::warn!("DNS send error: {e}");
                     }
@@ -47,17 +46,10 @@ pub fn start() -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Build a DNS response that answers every query with `CAPTIVE_PORTAL_IP`.
+/// Build a DNS response that answers every query with the given IP.
 ///
 /// Returns `None` if the query is malformed.
-fn build_response(query: &[u8]) -> Option<Vec<u8>> {
-    // DNS header is 12 bytes:
-    //   [0..2]  Transaction ID
-    //   [2..4]  Flags
-    //   [4..6]  QDCOUNT (questions)
-    //   [6..8]  ANCOUNT (answers)
-    //   [8..10] NSCOUNT
-    //  [10..12] ARCOUNT
+fn build_response(query: &[u8], ip: &[u8; 4]) -> Option<Vec<u8>> {
     if query.len() < 12 {
         return None;
     }
@@ -67,19 +59,15 @@ fn build_response(query: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
 
-    // Find the end of the question section so we can copy it verbatim.
-    // Each question is: name (labels terminated by 0x00) + QTYPE(2) + QCLASS(2).
+    // Find the end of the question section.
     let mut pos = 12;
     for _ in 0..qdcount {
-        // Skip name labels
         while pos < query.len() {
             let label_len = query[pos] as usize;
             if label_len == 0 {
-                pos += 1; // skip the terminating zero
+                pos += 1;
                 break;
             }
-            // Pointer compression (0xC0 prefix) — shouldn't appear in a query's
-            // question section, but handle it defensively.
             if label_len >= 0xC0 {
                 pos += 2;
                 break;
@@ -93,53 +81,33 @@ fn build_response(query: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
 
-    // Build response:
-    //   - Copy header, set QR=1 (response), AA=1 (authoritative), RCODE=0 (no error)
-    //   - Keep original QDCOUNT, set ANCOUNT = QDCOUNT
-    //   - Copy question section verbatim
-    //   - Append one A-record answer per question
     let question_section = &query[12..pos];
-
     let mut resp = Vec::with_capacity(pos + (qdcount as usize) * 16);
 
-    // Transaction ID (copy from query)
+    // Transaction ID
     resp.extend_from_slice(&query[0..2]);
 
-    // Flags: QR=1, Opcode=0, AA=1, TC=0, RD=1, RA=0, RCODE=0 → 0x8580
-    // RD is copied from the query to be polite, but we always set AA.
-    let rd = query[2] & 0x01; // Recursion Desired bit from query
-    resp.push(0x84 | rd); // QR=1, AA=1, plus RD if set
-    resp.push(0x00); // RA=0, RCODE=0
+    // Flags: QR=1, AA=1, copy RD from query
+    let rd = query[2] & 0x01;
+    resp.push(0x84 | rd);
+    resp.push(0x00);
 
-    // QDCOUNT (same as query)
+    // QDCOUNT (same), ANCOUNT = QDCOUNT, NSCOUNT = 0, ARCOUNT = 0
     resp.extend_from_slice(&query[4..6]);
-    // ANCOUNT = QDCOUNT (one answer per question)
     resp.extend_from_slice(&query[4..6]);
-    // NSCOUNT = 0
-    resp.extend_from_slice(&[0, 0]);
-    // ARCOUNT = 0
-    resp.extend_from_slice(&[0, 0]);
+    resp.extend_from_slice(&[0, 0, 0, 0]);
 
-    // Question section (verbatim copy)
+    // Question section (verbatim)
     resp.extend_from_slice(question_section);
 
     // Answer section: one A record per question
-    // We use a name pointer (0xC00C) pointing back to offset 12 (first question name).
-    // This is only fully correct for the first question, but virtually all DNS queries
-    // contain exactly one question, so this is fine in practice.
     for _ in 0..qdcount {
-        // Name: pointer to offset 0x000C
-        resp.extend_from_slice(&[0xC0, 0x0C]);
-        // Type: A (1)
-        resp.extend_from_slice(&[0x00, 0x01]);
-        // Class: IN (1)
-        resp.extend_from_slice(&[0x00, 0x01]);
-        // TTL: 60 seconds
-        resp.extend_from_slice(&[0x00, 0x00, 0x00, 0x3C]);
-        // RDLENGTH: 4 (IPv4 address)
-        resp.extend_from_slice(&[0x00, 0x04]);
-        // RDATA: 192.168.4.1
-        resp.extend_from_slice(&CAPTIVE_PORTAL_IP);
+        resp.extend_from_slice(&[0xC0, 0x0C]); // Name pointer
+        resp.extend_from_slice(&[0x00, 0x01]); // Type A
+        resp.extend_from_slice(&[0x00, 0x01]); // Class IN
+        resp.extend_from_slice(&[0x00, 0x00, 0x00, 0x3C]); // TTL 60s
+        resp.extend_from_slice(&[0x00, 0x04]); // RDLENGTH 4
+        resp.extend_from_slice(ip);
     }
 
     Some(resp)
