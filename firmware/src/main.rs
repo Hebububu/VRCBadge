@@ -1,10 +1,10 @@
 mod display;
 mod dns;
-mod http;
 mod logger;
 mod platform;
 mod sysinfo;
 mod touch;
+mod web;
 mod wifi;
 
 use std::cell::RefCell;
@@ -39,8 +39,8 @@ fn main() -> anyhow::Result<()> {
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
     dns::start(ap_ip)?;
-    let pending_background: http::SharedImageData = Arc::new(Mutex::new(None));
-    let _server = http::init(ap_ip, pending_background.clone())?;
+    let pending_background: web::SharedImageData = Arc::new(Mutex::new(None));
+    let _server = web::init(ap_ip, pending_background.clone())?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();

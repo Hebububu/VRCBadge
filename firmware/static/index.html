@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>VRCBadge</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#1a1a2e;color:#e0e0e0;font-family:-apple-system,system-ui,sans-serif;min-height:100vh}
+header{background:#1b4f72;padding:16px 20px;text-align:center}
+header h1{font-size:20px;font-weight:600;color:#fff}
+header p{color:#a0c4e0;font-size:13px;margin-top:2px}
+.tabs{display:flex;background:#16213e;border-bottom:1px solid #2a2a4a}
+.tab{flex:1;padding:12px 0;text-align:center;font-size:14px;color:#888;cursor:pointer;border-bottom:2px solid transparent;transition:color .2s,border-color .2s}
+.tab:hover{color:#ccc}
+.tab.active{color:#fff;border-bottom-color:#1b4f72}
+.page{display:none;padding:20px}
+.page.active{display:block}
+.upload-area{background:#2a2a4a;border:2px dashed #3a3a5a;border-radius:12px;padding:30px;text-align:center;max-width:400px;margin:0 auto}
+.upload-area p{margin-bottom:8px}
+.upload-area .hint{color:#888;font-size:12px}
+input[type=file]{margin:16px 0;color:#ccc}
+button{background:#1b4f72;color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:16px;cursor:pointer;margin-top:12px}
+button:hover{background:#1e5f8a}
+button:disabled{opacity:0.5;cursor:not-allowed}
+#status{margin-top:16px;font-size:14px;min-height:20px;text-align:center}
+.ok{color:#4caf50}
+.err{color:#f44336}
+.placeholder{text-align:center;padding:60px 20px;color:#555}
+.placeholder p{font-size:16px;margin-bottom:8px}
+.placeholder span{font-size:13px;color:#444}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>VRCBadge</h1>
+  <p>Badge Configuration</p>
+</header>
+
+<nav class="tabs">
+  <div class="tab active" data-tab="upload">Upload</div>
+  <div class="tab" data-tab="profile">Profile</div>
+  <div class="tab" data-tab="settings">Settings</div>
+</nav>
+
+<!-- Upload Tab -->
+<div id="upload" class="page active">
+  <div class="upload-area">
+    <p>Select an image to set as badge background</p>
+    <p class="hint">Image will be resized to 480 x 320</p>
+    <input type="file" id="file" accept="image/*">
+    <br>
+    <button id="btn" onclick="upload()" disabled>Upload</button>
+  </div>
+  <div id="status"></div>
+</div>
+
+<!-- Profile Tab (placeholder) -->
+<div id="profile" class="page">
+  <div class="placeholder">
+    <p>Profile Editor</p>
+    <span>Coming soon</span>
+  </div>
+</div>
+
+<!-- Settings Tab (placeholder) -->
+<div id="settings" class="page">
+  <div class="placeholder">
+    <p>Badge Settings</p>
+    <span>Coming soon</span>
+  </div>
+</div>
+
+<script>
+// Tab switching
+document.querySelectorAll('.tab').forEach(function(tab) {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.tab).classList.add('active');
+  });
+});
+
+// Background image upload
+var W = 480, H = 320;
+var fileInput = document.getElementById('file');
+var btn = document.getElementById('btn');
+var statusEl = document.getElementById('status');
+
+fileInput.onchange = function() { btn.disabled = !fileInput.files.length; };
+
+function upload() {
+  var f = fileInput.files[0];
+  if (!f) return;
+  btn.disabled = true;
+  statusEl.textContent = 'Processing...';
+  statusEl.className = '';
+
+  var img = new Image();
+  img.onload = function() {
+    var c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    var ctx = c.getContext('2d');
+
+    // Cover crop: scale to fill, center crop
+    var s = Math.max(W / img.width, H / img.height);
+    var sw = img.width * s, sh = img.height * s;
+    ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
+
+    var rgba = ctx.getImageData(0, 0, W, H).data;
+    // Strip alpha: RGBA -> RGB
+    var rgb = new Uint8Array(W * H * 3);
+    for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+      rgb[j] = rgba[i]; rgb[j+1] = rgba[i+1]; rgb[j+2] = rgba[i+2];
+    }
+
+    statusEl.textContent = 'Uploading (' + Math.round(rgb.length / 1024) + ' KB)...';
+    fetch('/api/background', {
+      method: 'POST',
+      body: rgb,
+      headers: { 'Content-Type': 'application/octet-stream' }
+    })
+    .then(function(r) {
+      if (r.ok) { statusEl.textContent = 'Done!'; statusEl.className = 'ok'; }
+      else r.text().then(function(t) { statusEl.textContent = 'Error: ' + t; statusEl.className = 'err'; });
+    })
+    .catch(function(e) { statusEl.textContent = 'Error: ' + e; statusEl.className = 'err'; })
+    .finally(function() { btn.disabled = false; });
+  };
+  img.onerror = function() {
+    statusEl.textContent = 'Failed to load image';
+    statusEl.className = 'err';
+    btn.disabled = false;
+  };
+  img.src = URL.createObjectURL(f);
+}
+</script>
+</body>
+</html>
