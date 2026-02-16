@@ -2,6 +2,7 @@ mod display;
 mod dns;
 mod logger;
 mod platform;
+mod profile;
 mod sysinfo;
 mod touch;
 mod web;
@@ -40,7 +41,15 @@ fn main() -> anyhow::Result<()> {
     let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
     dns::start(ap_ip)?;
     let pending_background: web::SharedImageData = Arc::new(Mutex::new(None));
-    let _server = web::init(ap_ip, pending_background.clone())?;
+    let default_profile = profile::Profile::default();
+    let current_profile: profile::CurrentProfile = Arc::new(Mutex::new(default_profile.clone()));
+    let pending_profile: profile::PendingProfile = Arc::new(Mutex::new(None));
+    let _server = web::init(
+        ap_ip,
+        pending_background.clone(),
+        current_profile.clone(),
+        pending_profile.clone(),
+    )?;
 
     // --- Slint platform ---
     let esp_platform = Esp32Platform::new();
@@ -90,11 +99,11 @@ fn main() -> anyhow::Result<()> {
     // --- Create UI ---
     let ui = BadgeUI::new().map_err(|e| anyhow::anyhow!("Failed to create UI: {:?}", e))?;
 
-    // Set initial values
-    ui.set_display_name("Hebu".into());
-    ui.set_tagline("Hello from VRCBadge!".into());
-    ui.set_twitter_handle("@Hebu_VRC".into());
-    ui.set_discord_handle("hebu".into());
+    // Set initial values from default profile
+    ui.set_display_name(default_profile.display_name.into());
+    ui.set_tagline(default_profile.tagline.into());
+    ui.set_twitter_handle(default_profile.twitter_handle.into());
+    ui.set_discord_handle(default_profile.discord_handle.into());
     ui.set_battery_percent(100);
     ui.set_wifi_ip(ap_ip.to_string().into());
     ui.set_firmware_version(sysinfo::firmware_version().into());
@@ -137,6 +146,21 @@ fn main() -> anyhow::Result<()> {
             ui.set_about_heap(format!("{} KB", sysinfo::free_heap_kb()).into());
             ui.set_about_psram(format!("{} KB", sysinfo::free_psram_kb()).into());
             ui.set_log_text(logger::snapshot().into());
+
+            // Check for profile update from web
+            if let Ok(mut pending) = pending_profile.try_lock() {
+                if let Some(new_profile) = pending.take() {
+                    ui.set_display_name(new_profile.display_name.clone().into());
+                    ui.set_tagline(new_profile.tagline.clone().into());
+                    ui.set_twitter_handle(new_profile.twitter_handle.clone().into());
+                    ui.set_discord_handle(new_profile.discord_handle.clone().into());
+                    // Update current profile for future GET /api/profile requests
+                    if let Ok(mut current) = current_profile.try_lock() {
+                        *current = new_profile;
+                    }
+                    log::info!("Badge profile updated");
+                }
+            }
 
             // Check for new background image from HTTP upload
             if let Ok(mut pending) = pending_background.try_lock() {

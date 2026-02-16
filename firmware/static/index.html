@@ -29,6 +29,13 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 .placeholder{text-align:center;padding:60px 20px;color:#555}
 .placeholder p{font-size:16px;margin-bottom:8px}
 .placeholder span{font-size:13px;color:#444}
+.form-group{max-width:400px;margin:0 auto 16px}
+.form-group label{display:block;font-size:13px;color:#888;margin-bottom:4px;padding-left:4px}
+.form-group input{width:100%;padding:10px 12px;background:#2a2a4a;border:1px solid #3a3a5a;border-radius:8px;color:#e0e0e0;font-size:15px;outline:none}
+.form-group input:focus{border-color:#1b4f72}
+.form-group input::placeholder{color:#555}
+.btn-row{max-width:400px;margin:20px auto 0;text-align:center}
+#prof-status{margin-top:12px;font-size:14px;min-height:20px;text-align:center}
 </style>
 </head>
 <body>
@@ -56,12 +63,28 @@ button:disabled{opacity:0.5;cursor:not-allowed}
   <div id="status"></div>
 </div>
 
-<!-- Profile Tab (placeholder) -->
+<!-- Profile Tab -->
 <div id="profile" class="page">
-  <div class="placeholder">
-    <p>Profile Editor</p>
-    <span>Coming soon</span>
+  <div class="form-group">
+    <label>Display Name</label>
+    <input type="text" id="prof-name" maxlength="20" placeholder="Your name">
   </div>
+  <div class="form-group">
+    <label>Tagline</label>
+    <input type="text" id="prof-tagline" maxlength="40" placeholder="Your tagline">
+  </div>
+  <div class="form-group">
+    <label>Twitter / X</label>
+    <input type="text" id="prof-twitter" maxlength="30" placeholder="@handle">
+  </div>
+  <div class="form-group">
+    <label>Discord</label>
+    <input type="text" id="prof-discord" maxlength="30" placeholder="username">
+  </div>
+  <div class="btn-row">
+    <button onclick="saveProfile()">Save Profile</button>
+  </div>
+  <div id="prof-status"></div>
 </div>
 
 <!-- Settings Tab (placeholder) -->
@@ -80,8 +103,49 @@ document.querySelectorAll('.tab').forEach(function(tab) {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     tab.classList.add('active');
     document.getElementById(tab.dataset.tab).classList.add('active');
+    // Load profile when switching to profile tab
+    if (tab.dataset.tab === 'profile') loadProfile();
   });
 });
+
+// Profile editing
+function loadProfile() {
+  fetch('/api/profile')
+    .then(function(r) { return r.json(); })
+    .then(function(p) {
+      document.getElementById('prof-name').value = p.display_name || '';
+      document.getElementById('prof-tagline').value = p.tagline || '';
+      document.getElementById('prof-twitter').value = p.twitter_handle || '';
+      document.getElementById('prof-discord').value = p.discord_handle || '';
+    })
+    .catch(function(e) {
+      var s = document.getElementById('prof-status');
+      s.textContent = 'Failed to load profile';
+      s.className = 'err';
+    });
+}
+
+function saveProfile() {
+  var profStatus = document.getElementById('prof-status');
+  profStatus.textContent = 'Saving...';
+  profStatus.className = '';
+  var data = {
+    display_name: document.getElementById('prof-name').value,
+    tagline: document.getElementById('prof-tagline').value,
+    twitter_handle: document.getElementById('prof-twitter').value,
+    discord_handle: document.getElementById('prof-discord').value
+  };
+  fetch('/api/profile', {
+    method: 'POST',
+    body: JSON.stringify(data),
+    headers: { 'Content-Type': 'application/json' }
+  })
+  .then(function(r) {
+    if (r.ok) { profStatus.textContent = 'Saved!'; profStatus.className = 'ok'; }
+    else r.text().then(function(t) { profStatus.textContent = 'Error: ' + t; profStatus.className = 'err'; });
+  })
+  .catch(function(e) { profStatus.textContent = 'Error: ' + e; profStatus.className = 'err'; });
+}
 
 // Background image upload
 var W = 480, H = 320;
