@@ -2,13 +2,10 @@ use esp_idf_svc::http::server::EspHttpServer;
 use esp_idf_svc::http::Method;
 use esp_idf_svc::io::Write;
 
-use crate::platform::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use crate::profile::{CurrentProfile, PendingProfile};
+use crate::storage;
 
 use super::SharedImageData;
-
-/// Expected size of a raw RGB888 background image (480 * 320 * 3 bytes).
-const BACKGROUND_IMAGE_SIZE: usize = DISPLAY_WIDTH as usize * DISPLAY_HEIGHT as usize * 3;
 
 /// Maximum body size for profile JSON (4 KB — plenty for a few short strings).
 const MAX_PROFILE_BODY: usize = 4096;
@@ -17,6 +14,7 @@ const MAX_PROFILE_BODY: usize = 4096;
 pub fn register(
     server: &mut EspHttpServer<'static>,
     pending_background: SharedImageData,
+    pending_avatar: SharedImageData,
     current_profile: CurrentProfile,
     pending_profile: PendingProfile,
 ) -> anyhow::Result<()> {
@@ -85,29 +83,25 @@ pub fn register(
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
 
-    // Background image upload
-    server.fn_handler("/api/background", Method::Post, move |mut req| {
-        // Validate content length
+    // Avatar image upload (150x150 raw RGB888)
+    server.fn_handler("/api/avatar", Method::Post, move |mut req| {
+        let expected = storage::AVATAR_IMAGE_SIZE;
         let content_len = req
             .header("Content-Length")
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(0);
 
-        if content_len != BACKGROUND_IMAGE_SIZE {
+        if content_len != expected {
             let mut resp =
                 req.into_response(400, Some("Bad Request"), &[("Content-Type", "text/plain")])?;
-            let msg = format!(
-                "Expected {} bytes, got {}",
-                BACKGROUND_IMAGE_SIZE, content_len
-            );
+            let msg = format!("Expected {expected} bytes, got {content_len}");
             resp.write_all(msg.as_bytes()).map(|_| ())?;
             return Ok(());
         }
 
-        // Read body into buffer
-        let mut buf = vec![0u8; BACKGROUND_IMAGE_SIZE];
+        let mut buf = vec![0u8; expected];
         let mut total_read = 0;
-        while total_read < BACKGROUND_IMAGE_SIZE {
+        while total_read < expected {
             let n = req.read(&mut buf[total_read..])?;
             if n == 0 {
                 break;
@@ -115,26 +109,61 @@ pub fn register(
             total_read += n;
         }
 
-        if total_read != BACKGROUND_IMAGE_SIZE {
+        if total_read != expected {
             let mut resp =
                 req.into_response(400, Some("Bad Request"), &[("Content-Type", "text/plain")])?;
-            let msg = format!(
-                "Incomplete body: got {} of {} bytes",
-                total_read, BACKGROUND_IMAGE_SIZE
-            );
+            let msg = format!("Incomplete body: got {total_read} of {expected} bytes");
             resp.write_all(msg.as_bytes()).map(|_| ())?;
             return Ok(());
         }
 
-        // Store image data for the main loop to pick up
+        if let Ok(mut pending) = pending_avatar.lock() {
+            *pending = Some(buf);
+        }
+
+        log::info!("Avatar image received ({expected} bytes)");
+        req.into_ok_response()?.write_all(b"OK").map(|_| ())
+    })?;
+
+    // Background image upload (480x320 raw RGB888)
+    server.fn_handler("/api/background", Method::Post, move |mut req| {
+        let expected = storage::BACKGROUND_IMAGE_SIZE;
+        let content_len = req
+            .header("Content-Length")
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(0);
+
+        if content_len != expected {
+            let mut resp =
+                req.into_response(400, Some("Bad Request"), &[("Content-Type", "text/plain")])?;
+            let msg = format!("Expected {expected} bytes, got {content_len}");
+            resp.write_all(msg.as_bytes()).map(|_| ())?;
+            return Ok(());
+        }
+
+        let mut buf = vec![0u8; expected];
+        let mut total_read = 0;
+        while total_read < expected {
+            let n = req.read(&mut buf[total_read..])?;
+            if n == 0 {
+                break;
+            }
+            total_read += n;
+        }
+
+        if total_read != expected {
+            let mut resp =
+                req.into_response(400, Some("Bad Request"), &[("Content-Type", "text/plain")])?;
+            let msg = format!("Incomplete body: got {total_read} of {expected} bytes");
+            resp.write_all(msg.as_bytes()).map(|_| ())?;
+            return Ok(());
+        }
+
         if let Ok(mut pending) = pending_background.lock() {
             *pending = Some(buf);
         }
 
-        log::info!(
-            "Background image received ({} bytes)",
-            BACKGROUND_IMAGE_SIZE
-        );
+        log::info!("Background image received ({expected} bytes)");
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
 

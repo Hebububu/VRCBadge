@@ -8,6 +8,7 @@ component BadgePage inherits Rectangle {
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 100;
     in property <image> background-image;
+    in property <image> avatar-image;
 
     callback open-settings();
 
@@ -57,7 +58,7 @@ component BadgePage inherits Rectangle {
         clip: true;
 
         Image {
-            source: @image-url("../images/profile/sample.png");
+            source: root.avatar-image.width > 0 ? root.avatar-image : @image-url("../images/profile/sample.png");
             width: 100%;
             height: 100%;
             image-fit: cover;
@@ -785,6 +786,7 @@ export component BadgeUI inherits Window {
     in-out property <string> wifi-ip: "192.168.71.1";
     in-out property <float> display-brightness: 50;
     in-out property <image> background-image;
+    in-out property <image> avatar-image;
     in-out property <int> current-page: 0;
     in-out property <string> firmware-version: "0.0.0";
     in-out property <string> about-uptime: "0s";
@@ -803,6 +805,7 @@ export component BadgeUI inherits Window {
         discord-handle: root.discord-handle;
         battery-percent: root.battery-percent;
         background-image: root.background-image;
+        avatar-image: root.avatar-image;
 
         open-settings => {
             root.current-page = 1;

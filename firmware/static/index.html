@@ -36,6 +36,10 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 .form-group input::placeholder{color:#555}
 .btn-row{max-width:400px;margin:20px auto 0;text-align:center}
 #prof-status{margin-top:12px;font-size:14px;min-height:20px;text-align:center}
+.avatar-section{max-width:400px;margin:0 auto 20px;padding:16px;background:#2a2a4a;border-radius:12px;text-align:center}
+.avatar-section p{font-size:13px;color:#888;margin-bottom:8px}
+.avatar-section .hint{font-size:11px;color:#555}
+#avatar-status{margin-top:8px;font-size:14px;min-height:18px}
 </style>
 </head>
 <body>
@@ -65,6 +69,14 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 
 <!-- Profile Tab -->
 <div id="profile" class="page">
+  <div class="avatar-section">
+    <p>Profile Picture</p>
+    <p class="hint">Image will be cropped to 150 x 150</p>
+    <input type="file" id="avatar-file" accept="image/*">
+    <br>
+    <button id="avatar-btn" onclick="uploadAvatar()" disabled>Upload Avatar</button>
+    <div id="avatar-status"></div>
+  </div>
   <div class="form-group">
     <label>Display Name</label>
     <input type="text" id="prof-name" maxlength="20" placeholder="Your name">
@@ -145,6 +157,59 @@ function saveProfile() {
     else r.text().then(function(t) { profStatus.textContent = 'Error: ' + t; profStatus.className = 'err'; });
   })
   .catch(function(e) { profStatus.textContent = 'Error: ' + e; profStatus.className = 'err'; });
+}
+
+// Avatar image upload
+var AW = 150, AH = 150;
+var avatarFile = document.getElementById('avatar-file');
+var avatarBtn = document.getElementById('avatar-btn');
+var avatarStatus = document.getElementById('avatar-status');
+
+avatarFile.onchange = function() { avatarBtn.disabled = !avatarFile.files.length; };
+
+function uploadAvatar() {
+  var f = avatarFile.files[0];
+  if (!f) return;
+  avatarBtn.disabled = true;
+  avatarStatus.textContent = 'Processing...';
+  avatarStatus.className = '';
+
+  var img = new Image();
+  img.onload = function() {
+    var c = document.createElement('canvas');
+    c.width = AW; c.height = AH;
+    var ctx = c.getContext('2d');
+
+    // Cover crop: scale to fill, center crop
+    var s = Math.max(AW / img.width, AH / img.height);
+    var sw = img.width * s, sh = img.height * s;
+    ctx.drawImage(img, (AW - sw) / 2, (AH - sh) / 2, sw, sh);
+
+    var rgba = ctx.getImageData(0, 0, AW, AH).data;
+    var rgb = new Uint8Array(AW * AH * 3);
+    for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
+      rgb[j] = rgba[i]; rgb[j+1] = rgba[i+1]; rgb[j+2] = rgba[i+2];
+    }
+
+    avatarStatus.textContent = 'Uploading (' + Math.round(rgb.length / 1024) + ' KB)...';
+    fetch('/api/avatar', {
+      method: 'POST',
+      body: rgb,
+      headers: { 'Content-Type': 'application/octet-stream' }
+    })
+    .then(function(r) {
+      if (r.ok) { avatarStatus.textContent = 'Done!'; avatarStatus.className = 'ok'; }
+      else r.text().then(function(t) { avatarStatus.textContent = 'Error: ' + t; avatarStatus.className = 'err'; });
+    })
+    .catch(function(e) { avatarStatus.textContent = 'Error: ' + e; avatarStatus.className = 'err'; })
+    .finally(function() { avatarBtn.disabled = false; });
+  };
+  img.onerror = function() {
+    avatarStatus.textContent = 'Failed to load image';
+    avatarStatus.className = 'err';
+    avatarBtn.disabled = false;
+  };
+  img.src = URL.createObjectURL(f);
 }
 
 // Background image upload

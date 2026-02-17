@@ -3,6 +3,7 @@ mod dns;
 mod logger;
 mod platform;
 mod profile;
+mod storage;
 mod sysinfo;
 mod touch;
 mod web;
@@ -35,18 +36,25 @@ fn main() -> anyhow::Result<()> {
     // Take hardware peripherals
     let peripherals = Peripherals::take()?;
 
+    // --- Persistent storage (NVS + SPIFFS) ---
+    let nvs_partition = EspDefaultNvsPartition::take()?;
+    let nvs_for_storage = nvs_partition.clone(); // clone before WiFi consumes it
+    let mut nvs = storage::init_nvs(nvs_for_storage)?;
+    storage::init_spiffs()?;
+
     // --- WiFi AP + HTTP server ---
     let sys_loop = EspSystemEventLoop::take()?;
-    let nvs_partition = EspDefaultNvsPartition::take()?;
     let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
     dns::start(ap_ip)?;
     let pending_background: web::SharedImageData = Arc::new(Mutex::new(None));
-    let default_profile = profile::Profile::default();
-    let current_profile: profile::CurrentProfile = Arc::new(Mutex::new(default_profile.clone()));
+    let pending_avatar: web::SharedImageData = Arc::new(Mutex::new(None));
+    let saved_profile = storage::load_profile(&nvs).unwrap_or_default();
+    let current_profile: profile::CurrentProfile = Arc::new(Mutex::new(saved_profile.clone()));
     let pending_profile: profile::PendingProfile = Arc::new(Mutex::new(None));
     let _server = web::init(
         ap_ip,
         pending_background.clone(),
+        pending_avatar.clone(),
         current_profile.clone(),
         pending_profile.clone(),
     )?;
@@ -99,14 +107,34 @@ fn main() -> anyhow::Result<()> {
     // --- Create UI ---
     let ui = BadgeUI::new().map_err(|e| anyhow::anyhow!("Failed to create UI: {:?}", e))?;
 
-    // Set initial values from default profile
-    ui.set_display_name(default_profile.display_name.into());
-    ui.set_tagline(default_profile.tagline.into());
-    ui.set_twitter_handle(default_profile.twitter_handle.into());
-    ui.set_discord_handle(default_profile.discord_handle.into());
+    // Set initial values from saved (or default) profile
+    ui.set_display_name(saved_profile.display_name.into());
+    ui.set_tagline(saved_profile.tagline.into());
+    ui.set_twitter_handle(saved_profile.twitter_handle.into());
+    ui.set_discord_handle(saved_profile.discord_handle.into());
     ui.set_battery_percent(100);
     ui.set_wifi_ip(ap_ip.to_string().into());
     ui.set_firmware_version(sysinfo::firmware_version().into());
+
+    // Restore saved avatar from SPIFFS (67.5 KB)
+    if let Some(rgb_data) = storage::load_image("avatar", storage::AVATAR_IMAGE_SIZE) {
+        let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
+            &rgb_data,
+            storage::AVATAR_WIDTH,
+            storage::AVATAR_HEIGHT,
+        );
+        ui.set_avatar_image(Image::from_rgb8(buffer));
+    }
+
+    // Restore saved background from SPIFFS (460 KB)
+    if let Some(rgb_data) = storage::load_image("background", storage::BACKGROUND_IMAGE_SIZE) {
+        let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
+            &rgb_data,
+            platform::DISPLAY_WIDTH,
+            platform::DISPLAY_HEIGHT,
+        );
+        ui.set_background_image(Image::from_rgb8(buffer));
+    }
 
     // Wire brightness slider to backlight PWM (debounced to avoid flicker)
     let backlight = RefCell::new(backlight);
@@ -156,9 +184,24 @@ fn main() -> anyhow::Result<()> {
                     ui.set_discord_handle(new_profile.discord_handle.clone().into());
                     // Update current profile for future GET /api/profile requests
                     if let Ok(mut current) = current_profile.try_lock() {
-                        *current = new_profile;
+                        *current = new_profile.clone();
                     }
+                    storage::save_profile(&mut nvs, &new_profile);
                     log::info!("Badge profile updated");
+                }
+            }
+
+            // Check for new avatar image from HTTP upload
+            if let Ok(mut pending) = pending_avatar.try_lock() {
+                if let Some(rgb_data) = pending.take() {
+                    let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
+                        &rgb_data,
+                        storage::AVATAR_WIDTH,
+                        storage::AVATAR_HEIGHT,
+                    );
+                    ui.set_avatar_image(Image::from_rgb8(buffer));
+                    storage::save_image("avatar", &rgb_data);
+                    log::info!("Avatar image updated");
                 }
             }
 
@@ -171,6 +214,7 @@ fn main() -> anyhow::Result<()> {
                         platform::DISPLAY_HEIGHT,
                     );
                     ui.set_background_image(Image::from_rgb8(buffer));
+                    storage::save_image("background", &rgb_data);
                     log::info!("Background image updated");
                 }
             }

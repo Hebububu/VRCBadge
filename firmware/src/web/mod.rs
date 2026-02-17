@@ -20,6 +20,7 @@ pub type SharedImageData = Arc<Mutex<Option<Vec<u8>>>>;
 pub fn init(
     ap_ip: Ipv4Addr,
     pending_background: SharedImageData,
+    pending_avatar: SharedImageData,
     current_profile: CurrentProfile,
     pending_profile: PendingProfile,
 ) -> anyhow::Result<EspHttpServer<'static>> {
@@ -39,6 +40,7 @@ pub fn init(
     api::register(
         &mut server,
         pending_background,
+        pending_avatar,
         current_profile,
         pending_profile,
     )?;
