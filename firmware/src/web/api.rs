@@ -125,6 +125,17 @@ pub fn register(
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
 
+    // Clear background image (revert to solid color)
+    let pending_bg_delete = pending_background.clone();
+    server.fn_handler("/api/background", Method::Delete, move |req| {
+        // Signal the main loop to clear the background by sending an empty vec.
+        if let Ok(mut pending) = pending_bg_delete.lock() {
+            *pending = Some(Vec::new());
+        }
+        log::info!("Background image clear requested");
+        req.into_ok_response()?.write_all(b"OK").map(|_| ())
+    })?;
+
     // Background image upload (480x320 raw RGB888)
     server.fn_handler("/api/background", Method::Post, move |mut req| {
         let expected = storage::BACKGROUND_IMAGE_SIZE;

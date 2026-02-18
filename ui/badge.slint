@@ -9,13 +9,17 @@ component BadgePage inherits Rectangle {
     in-out property <int> battery-percent: 100;
     in property <image> background-image;
     in property <image> avatar-image;
+    in property <color> background-color: #1a1a2e;
+    in property <color> tagline-color: #e0e8f0;
+    in property <color> tagline-background-color: #1b4f72;
 
     callback open-settings();
 
-    background: transparent;
+    background: root.background-color;
 
-    // === Background image (behind everything) ===
+    // === Background image (behind everything, only shown if uploaded) ===
     Image {
+        visible: root.background-image.width > 0;
         x: 0px;
         y: 0px;
         width: 480px;
@@ -30,7 +34,7 @@ component BadgePage inherits Rectangle {
         y: 95px;
         width: 480px;
         height: 36px;
-        background: #1b4f72;
+        background: root.tagline-background-color;
 
         // Tagline text on the bar
         Text {
@@ -39,7 +43,7 @@ component BadgePage inherits Rectangle {
             text: root.tagline;
             font-size: 16px;
             font-weight: 500;
-            color: #e0e8f0;
+            color: root.tagline-color;
             vertical-alignment: center;
             overflow: elide;
         }
@@ -787,6 +791,9 @@ export component BadgeUI inherits Window {
     in-out property <float> display-brightness: 50;
     in-out property <image> background-image;
     in-out property <image> avatar-image;
+    in-out property <color> badge-background-color: #1a1a2e;
+    in-out property <color> tagline-color: #e0e8f0;
+    in-out property <color> tagline-background-color: #1b4f72;
     in-out property <int> current-page: 0;
     in-out property <string> firmware-version: "0.0.0";
     in-out property <string> about-uptime: "0s";
@@ -806,6 +813,9 @@ export component BadgeUI inherits Window {
         battery-percent: root.battery-percent;
         background-image: root.background-image;
         avatar-image: root.avatar-image;
+        background-color: root.badge-background-color;
+        tagline-color: root.tagline-color;
+        tagline-background-color: root.tagline-background-color;
 
         open-settings => {
             root.current-page = 1;

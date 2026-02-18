@@ -156,6 +156,22 @@ pub fn load_image(name: &str, expected_size: usize) -> Option<Vec<u8>> {
     Some(data)
 }
 
+/// Delete a saved image from SPIFFS.  Returns `true` if the file was removed.
+pub fn delete_image(name: &str) -> bool {
+    let path = format!("{SPIFFS_MOUNT}/{name}.rgb");
+    match std::fs::remove_file(&path) {
+        Ok(()) => {
+            log::info!("Deleted {path}");
+            true
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => false,
+        Err(e) => {
+            log::warn!("Failed to delete {path}: {e}");
+            false
+        }
+    }
+}
+
 /// Save a raw RGB888 image to SPIFFS.  Logs errors but never panics.
 pub fn save_image(name: &str, data: &[u8]) {
     let path = format!("{SPIFFS_MOUNT}/{name}.rgb");

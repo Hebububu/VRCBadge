@@ -16,30 +16,31 @@ header p{color:#a0c4e0;font-size:13px;margin-top:2px}
 .tab.active{color:#fff;border-bottom-color:#1b4f72}
 .page{display:none;padding:20px}
 .page.active{display:block}
-.upload-area{background:#2a2a4a;border:2px dashed #3a3a5a;border-radius:12px;padding:30px;text-align:center;max-width:400px;margin:0 auto}
-.upload-area p{margin-bottom:8px}
-.upload-area .hint{color:#888;font-size:12px}
-input[type=file]{margin:16px 0;color:#ccc}
-button{background:#1b4f72;color:#fff;border:none;border-radius:8px;padding:12px 32px;font-size:16px;cursor:pointer;margin-top:12px}
-button:hover{background:#1e5f8a}
-button:disabled{opacity:0.5;cursor:not-allowed}
-#status{margin-top:16px;font-size:14px;min-height:20px;text-align:center}
-.ok{color:#4caf50}
-.err{color:#f44336}
 .placeholder{text-align:center;padding:60px 20px;color:#555}
 .placeholder p{font-size:16px;margin-bottom:8px}
 .placeholder span{font-size:13px;color:#444}
+.section{max-width:400px;margin:0 auto 20px;padding:16px;background:#2a2a4a;border-radius:12px}
+.section-title{font-size:14px;font-weight:600;color:#ccc;margin-bottom:10px}
+.section .hint{font-size:11px;color:#555;margin-bottom:8px}
 .form-group{max-width:400px;margin:0 auto 16px}
 .form-group label{display:block;font-size:13px;color:#888;margin-bottom:4px;padding-left:4px}
-.form-group input{width:100%;padding:10px 12px;background:#2a2a4a;border:1px solid #3a3a5a;border-radius:8px;color:#e0e0e0;font-size:15px;outline:none}
-.form-group input:focus{border-color:#1b4f72}
-.form-group input::placeholder{color:#555}
+.form-group input[type=text]{width:100%;padding:10px 12px;background:#2a2a4a;border:1px solid #3a3a5a;border-radius:8px;color:#e0e0e0;font-size:15px;outline:none}
+.form-group input[type=text]:focus{border-color:#1b4f72}
+.form-group input[type=text]::placeholder{color:#555}
+.color-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.color-row label{font-size:13px;color:#888;flex:1}
+.color-row input[type=color]{width:44px;height:32px;border:1px solid #3a3a5a;border-radius:6px;background:#2a2a4a;cursor:pointer;padding:2px}
+.upload-row{text-align:center;margin-top:8px}
+input[type=file]{margin:8px 0;color:#ccc;font-size:13px}
+button{background:#1b4f72;color:#fff;border:none;border-radius:8px;padding:10px 24px;font-size:14px;cursor:pointer}
+button:hover{background:#1e5f8a}
+button:disabled{opacity:0.5;cursor:not-allowed}
+button.secondary{background:#3a3a5a}
+button.secondary:hover{background:#4a4a6a}
 .btn-row{max-width:400px;margin:20px auto 0;text-align:center}
-#prof-status{margin-top:12px;font-size:14px;min-height:20px;text-align:center}
-.avatar-section{max-width:400px;margin:0 auto 20px;padding:16px;background:#2a2a4a;border-radius:12px;text-align:center}
-.avatar-section p{font-size:13px;color:#888;margin-bottom:8px}
-.avatar-section .hint{font-size:11px;color:#555}
-#avatar-status{margin-top:8px;font-size:14px;min-height:18px}
+.status{margin-top:8px;font-size:13px;min-height:18px;text-align:center}
+.ok{color:#4caf50}
+.err{color:#f44336}
 </style>
 </head>
 <body>
@@ -50,33 +51,56 @@ button:disabled{opacity:0.5;cursor:not-allowed}
 </header>
 
 <nav class="tabs">
-  <div class="tab active" data-tab="upload">Upload</div>
-  <div class="tab" data-tab="profile">Profile</div>
+  <div class="tab active" data-tab="profile">Profile</div>
   <div class="tab" data-tab="settings">Settings</div>
 </nav>
 
-<!-- Upload Tab -->
-<div id="upload" class="page active">
-  <div class="upload-area">
-    <p>Select an image to set as badge background</p>
-    <p class="hint">Image will be resized to 480 x 320</p>
-    <input type="file" id="file" accept="image/*">
-    <br>
-    <button id="btn" onclick="upload()" disabled>Upload</button>
-  </div>
-  <div id="status"></div>
-</div>
-
 <!-- Profile Tab -->
-<div id="profile" class="page">
-  <div class="avatar-section">
-    <p>Profile Picture</p>
+<div id="profile" class="page active">
+
+  <!-- Avatar Section -->
+  <div class="section">
+    <div class="section-title">Profile Picture</div>
     <p class="hint">Image will be cropped to 150 x 150</p>
-    <input type="file" id="avatar-file" accept="image/*">
-    <br>
-    <button id="avatar-btn" onclick="uploadAvatar()" disabled>Upload Avatar</button>
-    <div id="avatar-status"></div>
+    <div class="upload-row">
+      <input type="file" id="avatar-file" accept="image/*">
+      <br>
+      <button id="avatar-btn" onclick="uploadAvatar()" disabled>Upload Avatar</button>
+    </div>
+    <div class="status" id="avatar-status"></div>
   </div>
+
+  <!-- Background Section -->
+  <div class="section">
+    <div class="section-title">Background</div>
+    <div class="color-row">
+      <label>Solid Color</label>
+      <input type="color" id="bg-color" value="#1a1a2e">
+    </div>
+    <p class="hint">Or upload a background image (480 x 320)</p>
+    <div class="upload-row">
+      <input type="file" id="bg-file" accept="image/*">
+      <br>
+      <button id="bg-btn" onclick="uploadBackground()" disabled>Upload Image</button>
+      <button class="secondary" onclick="clearBackground()">Use Solid Color</button>
+    </div>
+    <div class="status" id="bg-status"></div>
+  </div>
+
+  <!-- Tagline Color -->
+  <div class="section">
+    <div class="section-title">Tagline Appearance</div>
+    <div class="color-row">
+      <label>Text Color</label>
+      <input type="color" id="tagline-color" value="#e0e8f0">
+    </div>
+    <div class="color-row">
+      <label>Bar Color</label>
+      <input type="color" id="tagline-bg-color" value="#1b4f72">
+    </div>
+  </div>
+
+  <!-- Text Fields -->
   <div class="form-group">
     <label>Display Name</label>
     <input type="text" id="prof-name" maxlength="20" placeholder="Your name">
@@ -96,7 +120,7 @@ button:disabled{opacity:0.5;cursor:not-allowed}
   <div class="btn-row">
     <button onclick="saveProfile()">Save Profile</button>
   </div>
-  <div id="prof-status"></div>
+  <div class="status" id="prof-status"></div>
 </div>
 
 <!-- Settings Tab (placeholder) -->
@@ -115,12 +139,11 @@ document.querySelectorAll('.tab').forEach(function(tab) {
     document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
     tab.classList.add('active');
     document.getElementById(tab.dataset.tab).classList.add('active');
-    // Load profile when switching to profile tab
     if (tab.dataset.tab === 'profile') loadProfile();
   });
 });
 
-// Profile editing
+// --- Profile ---
 function loadProfile() {
   fetch('/api/profile')
     .then(function(r) { return r.json(); })
@@ -129,23 +152,29 @@ function loadProfile() {
       document.getElementById('prof-tagline').value = p.tagline || '';
       document.getElementById('prof-twitter').value = p.twitter_handle || '';
       document.getElementById('prof-discord').value = p.discord_handle || '';
+      if (p.background_color) document.getElementById('bg-color').value = p.background_color;
+      if (p.tagline_color) document.getElementById('tagline-color').value = p.tagline_color;
+      if (p.tagline_background_color) document.getElementById('tagline-bg-color').value = p.tagline_background_color;
     })
-    .catch(function(e) {
+    .catch(function() {
       var s = document.getElementById('prof-status');
       s.textContent = 'Failed to load profile';
-      s.className = 'err';
+      s.className = 'status err';
     });
 }
 
 function saveProfile() {
-  var profStatus = document.getElementById('prof-status');
-  profStatus.textContent = 'Saving...';
-  profStatus.className = '';
+  var s = document.getElementById('prof-status');
+  s.textContent = 'Saving...';
+  s.className = 'status';
   var data = {
     display_name: document.getElementById('prof-name').value,
     tagline: document.getElementById('prof-tagline').value,
     twitter_handle: document.getElementById('prof-twitter').value,
-    discord_handle: document.getElementById('prof-discord').value
+    discord_handle: document.getElementById('prof-discord').value,
+    background_color: document.getElementById('bg-color').value,
+    tagline_color: document.getElementById('tagline-color').value,
+    tagline_background_color: document.getElementById('tagline-bg-color').value
   };
   fetch('/api/profile', {
     method: 'POST',
@@ -153,13 +182,16 @@ function saveProfile() {
     headers: { 'Content-Type': 'application/json' }
   })
   .then(function(r) {
-    if (r.ok) { profStatus.textContent = 'Saved!'; profStatus.className = 'ok'; }
-    else r.text().then(function(t) { profStatus.textContent = 'Error: ' + t; profStatus.className = 'err'; });
+    if (r.ok) { s.textContent = 'Saved!'; s.className = 'status ok'; }
+    else r.text().then(function(t) { s.textContent = 'Error: ' + t; s.className = 'status err'; });
   })
-  .catch(function(e) { profStatus.textContent = 'Error: ' + e; profStatus.className = 'err'; });
+  .catch(function(e) { s.textContent = 'Error: ' + e; s.className = 'status err'; });
 }
 
-// Avatar image upload
+// Load profile on first visit
+loadProfile();
+
+// --- Avatar Upload ---
 var AW = 150, AH = 150;
 var avatarFile = document.getElementById('avatar-file');
 var avatarBtn = document.getElementById('avatar-btn');
@@ -172,98 +204,84 @@ function uploadAvatar() {
   if (!f) return;
   avatarBtn.disabled = true;
   avatarStatus.textContent = 'Processing...';
-  avatarStatus.className = '';
+  avatarStatus.className = 'status';
 
   var img = new Image();
   img.onload = function() {
     var c = document.createElement('canvas');
     c.width = AW; c.height = AH;
     var ctx = c.getContext('2d');
-
-    // Cover crop: scale to fill, center crop
     var s = Math.max(AW / img.width, AH / img.height);
     var sw = img.width * s, sh = img.height * s;
     ctx.drawImage(img, (AW - sw) / 2, (AH - sh) / 2, sw, sh);
-
     var rgba = ctx.getImageData(0, 0, AW, AH).data;
     var rgb = new Uint8Array(AW * AH * 3);
     for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
       rgb[j] = rgba[i]; rgb[j+1] = rgba[i+1]; rgb[j+2] = rgba[i+2];
     }
-
     avatarStatus.textContent = 'Uploading (' + Math.round(rgb.length / 1024) + ' KB)...';
-    fetch('/api/avatar', {
-      method: 'POST',
-      body: rgb,
-      headers: { 'Content-Type': 'application/octet-stream' }
-    })
+    fetch('/api/avatar', { method: 'POST', body: rgb, headers: { 'Content-Type': 'application/octet-stream' } })
     .then(function(r) {
-      if (r.ok) { avatarStatus.textContent = 'Done!'; avatarStatus.className = 'ok'; }
-      else r.text().then(function(t) { avatarStatus.textContent = 'Error: ' + t; avatarStatus.className = 'err'; });
+      if (r.ok) { avatarStatus.textContent = 'Done!'; avatarStatus.className = 'status ok'; }
+      else r.text().then(function(t) { avatarStatus.textContent = 'Error: ' + t; avatarStatus.className = 'status err'; });
     })
-    .catch(function(e) { avatarStatus.textContent = 'Error: ' + e; avatarStatus.className = 'err'; })
+    .catch(function(e) { avatarStatus.textContent = 'Error: ' + e; avatarStatus.className = 'status err'; })
     .finally(function() { avatarBtn.disabled = false; });
   };
-  img.onerror = function() {
-    avatarStatus.textContent = 'Failed to load image';
-    avatarStatus.className = 'err';
-    avatarBtn.disabled = false;
-  };
+  img.onerror = function() { avatarStatus.textContent = 'Failed to load image'; avatarStatus.className = 'status err'; avatarBtn.disabled = false; };
   img.src = URL.createObjectURL(f);
 }
 
-// Background image upload
+// --- Background Upload ---
 var W = 480, H = 320;
-var fileInput = document.getElementById('file');
-var btn = document.getElementById('btn');
-var statusEl = document.getElementById('status');
+var bgFile = document.getElementById('bg-file');
+var bgBtn = document.getElementById('bg-btn');
+var bgStatus = document.getElementById('bg-status');
 
-fileInput.onchange = function() { btn.disabled = !fileInput.files.length; };
+bgFile.onchange = function() { bgBtn.disabled = !bgFile.files.length; };
 
-function upload() {
-  var f = fileInput.files[0];
+function uploadBackground() {
+  var f = bgFile.files[0];
   if (!f) return;
-  btn.disabled = true;
-  statusEl.textContent = 'Processing...';
-  statusEl.className = '';
+  bgBtn.disabled = true;
+  bgStatus.textContent = 'Processing...';
+  bgStatus.className = 'status';
 
   var img = new Image();
   img.onload = function() {
     var c = document.createElement('canvas');
     c.width = W; c.height = H;
     var ctx = c.getContext('2d');
-
-    // Cover crop: scale to fill, center crop
     var s = Math.max(W / img.width, H / img.height);
     var sw = img.width * s, sh = img.height * s;
     ctx.drawImage(img, (W - sw) / 2, (H - sh) / 2, sw, sh);
-
     var rgba = ctx.getImageData(0, 0, W, H).data;
-    // Strip alpha: RGBA -> RGB
     var rgb = new Uint8Array(W * H * 3);
     for (var i = 0, j = 0; i < rgba.length; i += 4, j += 3) {
       rgb[j] = rgba[i]; rgb[j+1] = rgba[i+1]; rgb[j+2] = rgba[i+2];
     }
-
-    statusEl.textContent = 'Uploading (' + Math.round(rgb.length / 1024) + ' KB)...';
-    fetch('/api/background', {
-      method: 'POST',
-      body: rgb,
-      headers: { 'Content-Type': 'application/octet-stream' }
-    })
+    bgStatus.textContent = 'Uploading (' + Math.round(rgb.length / 1024) + ' KB)...';
+    fetch('/api/background', { method: 'POST', body: rgb, headers: { 'Content-Type': 'application/octet-stream' } })
     .then(function(r) {
-      if (r.ok) { statusEl.textContent = 'Done!'; statusEl.className = 'ok'; }
-      else r.text().then(function(t) { statusEl.textContent = 'Error: ' + t; statusEl.className = 'err'; });
+      if (r.ok) { bgStatus.textContent = 'Done!'; bgStatus.className = 'status ok'; }
+      else r.text().then(function(t) { bgStatus.textContent = 'Error: ' + t; bgStatus.className = 'status err'; });
     })
-    .catch(function(e) { statusEl.textContent = 'Error: ' + e; statusEl.className = 'err'; })
-    .finally(function() { btn.disabled = false; });
+    .catch(function(e) { bgStatus.textContent = 'Error: ' + e; bgStatus.className = 'status err'; })
+    .finally(function() { bgBtn.disabled = false; });
   };
-  img.onerror = function() {
-    statusEl.textContent = 'Failed to load image';
-    statusEl.className = 'err';
-    btn.disabled = false;
-  };
+  img.onerror = function() { bgStatus.textContent = 'Failed to load image'; bgStatus.className = 'status err'; bgBtn.disabled = false; };
   img.src = URL.createObjectURL(f);
+}
+
+function clearBackground() {
+  bgStatus.textContent = 'Clearing...';
+  bgStatus.className = 'status';
+  fetch('/api/background', { method: 'DELETE' })
+  .then(function(r) {
+    if (r.ok) { bgStatus.textContent = 'Using solid color'; bgStatus.className = 'status ok'; }
+    else r.text().then(function(t) { bgStatus.textContent = 'Error: ' + t; bgStatus.className = 'status err'; });
+  })
+  .catch(function(e) { bgStatus.textContent = 'Error: ' + e; bgStatus.className = 'status err'; });
 }
 </script>
 </body>
