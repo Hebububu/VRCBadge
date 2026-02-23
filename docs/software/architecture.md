@@ -6,8 +6,8 @@
 graph TB
     subgraph Badge["Badge Software (ESP32-S3)"]
         UI["Slint UI"]
-        API["Axum HTTP API"]
-        Storage["Flash Storage (SPIFFS/LittleFS)"]
+        API["esp-idf-svc HTTP Server"]
+        Storage["Flash Storage (NVS + SPIFFS)"]
         Monitor["System Monitor"]
     end
 
@@ -22,7 +22,7 @@ graph TB
     API -->|"avatar upload"| Storage
     API -->|"profile update"| UI
     Storage -->|"load avatar"| UI
-    UI -->|"render_by_line()"| Display
+    UI -->|"framebuffer + DMA"| Display
     Touch -->|"touch events"| UI
     Monitor -->|"battery %"| UI
     Battery -->|"I2C read"| Monitor
@@ -32,12 +32,10 @@ graph TB
 ## Tech Stack
 
 ```
-Tokio (async runtime)          — works on ESP32-S3 via esp-idf
-Axum (HTTP server)             — works with mio_unsupported_force_poll_poll flag
-Slint (UI framework)           — officially supported, line-by-line rendering
-esp-idf-hal (GPIO/SPI/I2C)    — hardware abstraction
-esp-idf-svc (WiFi, NVS)       — WiFi and storage management
-SPIFFS/LittleFS                — flash-based filesystem for images
+Slint (UI framework)           — software renderer, full framebuffer with dirty-rect updates
+esp-idf-svc (HTTP, WiFi, NVS) — synchronous HTTP server, WiFi AP, non-volatile storage
+esp-idf-hal (GPIO/SPI/I2C)    — hardware abstraction (SPI display, I2C touch, PWM backlight)
+SPIFFS                         — flash-based filesystem for images (mounted at /storage)
 ```
 
 ## Slint on MCU
@@ -50,11 +48,12 @@ From the Slint embedded documentation, the key configuration:
 - `unsafe-single-threaded`
 - `libm`
 
-**Rendering strategy — line-by-line (`render_by_line()`):**
-- Renders one horizontal line at a time instead of a full framebuffer
-- Memory per line: ~960 bytes (480 pixels x 2 bytes RGB565)
-- Use dual line buffers with DMA for async SPI writes
-- Slint runtime fits in <300KB RAM
+**Rendering strategy — full framebuffer with dirty-rect DMA:**
+- Full 480x320 RGB565 framebuffer (300KB) allocated in PSRAM via `heap_caps_malloc`
+- Slint's dirty tracking identifies changed rectangles (typically 3-7 per frame)
+- Only dirty rectangles are sent to the display over SPI
+- 4KB DMA buffer allocated in internal SRAM for SPI transfers
+- `mipidsi` batches pixels into the SPI buffer automatically
 - Build script must set `EmbedResourcesKind::EmbedForSoftwareRenderer`
 
 ## Data Flow
@@ -62,32 +61,59 @@ From the Slint embedded documentation, the key configuration:
 ### Avatar Upload
 
 ```
-Phone -> POST /api/avatar (multipart) -> Axum handler
-  -> resize/convert to RGB565 -> write to SPIFFS/LittleFS
-  -> notify Slint UI -> re-render with new avatar
+Phone (browser) -> resize to 150x150, strip alpha (RGBA -> RGB)
+  -> POST /api/avatar (raw RGB888, 67,500 bytes) -> HTTP handler
+  -> store in pending slot -> main loop picks up
+  -> save to SPIFFS (/storage/avatar.rgb) + update Slint UI
 ```
 
 ### Profile Update
 
 ```
-Phone -> POST /api/profile (JSON) -> Axum handler
-  -> write to NVS (non-volatile storage)
-  -> notify Slint UI -> re-render with new text
+Phone -> POST /api/profile (JSON, max 4KB) -> HTTP handler
+  -> store in pending slot -> main loop picks up
+  -> save to NVS (namespace "badge", key "profile")
+  -> update Slint UI text + colors
 ```
 
-### Battery Monitoring
+### Battery Monitoring (planned)
 
 ```
-MAX17048 (I2C) -> periodic read -> System Monitor
+MAX17048 (I2C, addr 0x36) -> periodic read -> System Monitor
   -> update Slint UI battery indicator
-  -> expose via GET /api/status
+  (currently hardcoded to 100% — driver not yet implemented)
 ```
 
 ### Touch Input
 
 ```
-GT911 interrupt (TP_INT) -> I2C read coordinates
-  -> map to Slint input event -> UI handles interaction
+Main loop polls GT911 (I2C) -> read touch coordinates
+  -> coordinate transform (portrait GT911 -> landscape display)
+  -> dispatch Slint events (Pressed/Moved/Released/Exited)
+```
+
+### Captive Portal
+
+```
+DNS server (UDP :53, background thread, 4KB stack)
+  -> all A-record queries resolve to AP IP (TTL 60s)
+
+HTTP captive portal detection:
+  /generate_204          (Android / Chrome OS)
+  /hotspot-detect.html   (iOS / macOS)
+  /connecttest.txt       (Windows)
+  /canonical.html        (Firefox)
+  + wildcard /*          (fallback)
+  -> 302 redirect to http://<AP_IP>/  -> serves embedded SPA
+```
+
+### Backlight Control
+
+```
+Settings page slider (10-100%) -> on_brightness_changed callback
+  -> LEDC PWM on GPIO 7 (25kHz, 8-bit resolution)
+  -> debounced (2% threshold to avoid flicker)
+  -> starts at 50% brightness on boot
 ```
 
 ## Storage Layout
@@ -95,23 +121,29 @@ GT911 interrupt (TP_INT) -> I2C read coordinates
 ```
 16MB Flash:
   ~4MB  - Firmware (application binary)
-  ~12MB - Data partition (SPIFFS or LittleFS)
-           +-- avatar.bin    (current avatar, RGB565)
-           +-- profile.json  (name, tagline, socials)
-           +-- config.json   (WiFi credentials, display settings)
+  ~12MB - SPIFFS partition (mounted at /storage)
+           +-- avatar.rgb      (150x150 raw RGB888, 67.5KB)
+           +-- background.rgb  (480x320 raw RGB888, 450KB)
+
+NVS (non-volatile storage, separate partition):
+  namespace "badge":
+    key "profile" -> JSON string (display name, tagline, socials, colors)
 ```
 
-For `std` mode, esp-idf's VFS layer maps the data partition to a file path (e.g., `/data/`), so standard `std::fs` calls work transparently.
+For `std` mode, esp-idf's VFS layer maps the SPIFFS partition to `/storage/`, so standard `std::fs` calls work transparently. NVS is accessed via `esp-idf-svc`'s `EspNvs` API.
 
 ## API Endpoints
 
 See [API documentation](./api.md) for full endpoint specifications.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | /api/avatar | Upload new avatar image |
-| POST | /api/profile | Update name, tagline, socials |
-| GET | /api/status | Battery %, WiFi strength, uptime |
-| GET | /api/health | Simple healthcheck |
-| GET | /api/rfid/slots | List stored cards (future) |
-| POST | /api/rfid/slot/:id | Activate card slot (future) |
+| Method | Endpoint | Description | Status |
+|--------|----------|-------------|--------|
+| GET | /api/health | Simple healthcheck | Implemented |
+| GET | /api/profile | Get current profile as JSON | Implemented |
+| POST | /api/profile | Update name, tagline, socials, colors | Implemented |
+| POST | /api/avatar | Upload avatar image (raw RGB888) | Implemented |
+| POST | /api/background | Upload background image (raw RGB888) | Implemented |
+| DELETE | /api/background | Clear background (revert to solid color) | Implemented |
+| GET | /api/status | Battery %, WiFi strength, uptime | Planned |
+| GET | /api/rfid/slots | List stored cards | Future |
+| POST | /api/rfid/slot/:id | Activate card slot | Future |

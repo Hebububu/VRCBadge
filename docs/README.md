@@ -17,7 +17,7 @@ A wearable digital badge with dynamic display, changeable avatar, and future RFI
 ## Resources
 
 - [Slint Documentation](https://slint.dev/docs)
-- [Axum Web Framework](https://github.com/tokio-rs/axum)
+- [esp-idf-svc (Rust)](https://github.com/esp-rs/esp-idf-svc)
 - [ESP32-S3 Datasheet](https://www.espressif.com/sites/default/files/documentation/esp32-s3_datasheet_en.pdf)
 - [ESP-IDF Programming Guide](https://docs.espressif.com/projects/esp-idf/en/stable/esp32s3/)
 - [esp-idf-hal (Rust)](https://github.com/esp-rs/esp-idf-hal)

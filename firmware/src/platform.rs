@@ -11,7 +11,7 @@ pub const DISPLAY_HEIGHT: u32 = 320;
 
 /// Custom Slint platform for ESP32-S3 with ST7796S display.
 ///
-/// Uses `MinimalSoftwareWindow` for line-by-line rendering and
+/// Uses `MinimalSoftwareWindow` for full framebuffer rendering and
 /// `std::time::Instant` for timekeeping (available in esp-idf std mode).
 pub struct Esp32Platform {
     window: Rc<MinimalSoftwareWindow>,
