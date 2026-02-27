@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "VRCBadge")(type "KiCad")(uri "${KIPRJMOD}/VRCBadge.pretty")(options "")(descr "VRCBadge project footprints from LCSC/EasyEDA"))
+)
