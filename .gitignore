@@ -17,3 +17,9 @@ Thumbs.db
 
 # Environment
 .env
+
+# KiCad
+*-backups/
+fp-info-cache
+*.kicad_prl
+*-temp_view.svg
