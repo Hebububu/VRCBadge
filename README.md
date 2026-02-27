@@ -16,6 +16,14 @@ editable profile information (twitter, discord etc..), and future RFID door key 
 
 This project is inspired by Github Conference Badge video, posted by Wes Bos. [Ref Video](https://youtu.be/_jPm_zN95FE?si=vHjaHDR8lpRF7iKP)
 
+### Schematic
+
+<img src="./images/schematic.png" alt="Schematic" width="720">
+
+Custom 2-layer PCB designed for JLCPCB fabrication.
+USB-C input with TP4056 LiPo charging, DW01A+FS8205A battery protection, and ME6211 3.3V LDO.
+ESP32-S3-WROOM-1U drives a 3.5" SPI LCD with capacitive touch, while a MAX17048 fuel gauge tracks battery level over I2C.
+
 ### UI Preview
 
 <img src="./images/etc/slint_preview.png" alt="UI Preview" width="480">
