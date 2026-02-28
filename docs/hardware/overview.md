@@ -1,6 +1,6 @@
 # Hardware Overview
 
-## Platform: ESP32-S3-WROOM-1-N16R8
+## Platform: ESP32-S3-WROOM-1U
 
 ### Module Specs
 
@@ -9,7 +9,7 @@
 - **PSRAM:** 8MB Octal-SPI
 - **Flash:** 16MB
 - **Wireless:** WiFi 802.11 b/g/n + BLE 5.0
-- **Antenna:** Integrated PCB antenna
+- **Antenna:** U.FL connector (external antenna)
 - **Module size:** ~18x25mm
 - **Unit cost:** ~$4-5
 
@@ -68,75 +68,70 @@
 
 | Component | Part | Notes |
 |-----------|------|-------|
-| MCU | ESP32-S3-WROOM-1-N16R8 | Soldered directly to PCB |
+| MCU | ESP32-S3-WROOM-1U | Soldered directly to PCB, U.FL antenna |
 | Display | Waveshare 3.5" RPi LCD (F) | Connected via GH1.25 13-pin cable |
-| Charger | TP4056 | LiPo charging from USB-C 5V |
-| Battery protection | DW01A + FS8205 | Over-discharge/over-current protection |
-| Soft switch | TPS22918 | Load switch for 3.3V rail |
-| LDO | AP2112K-3.3 | 3.3V regulation from LiPo (3.0-4.2V), 600mA |
-| Fuel gauge | MAX17048 | Battery voltage/percentage via I2C |
+| Charger | TP4056 (ESOP-8) | LiPo charging from USB-C 5V |
+| Battery protection | DW01A + FS8205A | Over-discharge/over-current protection |
+| LDO | ME6211C33M5 | 3.3V regulation from LiPo (3.0-4.2V), 500mA |
+| Fuel gauge | MAX17048G+T10 | Battery voltage/percentage via I2C |
 | Connector | USB-C (16-pin) | Charging + programming (built-in USB-JTAG) |
-| Button | Tactile switch | Power on/off |
-| RFID header | UART pin header | Future Chameleon Tiny module |
+| Buttons | 2x tactile switch | BOOT (IO0) + RESET (EN) |
+| LEDs | 2x LED (D1, D2) | Charge (CHG) and standby (STDBY) indicators |
 | Battery | 3.7V 3000mAh LiPo pouch | |
 
 ### Power Path
 
 ```
-USB-C 5V --> TP4056 --> LiPo 3.7V --> DW01A/FS8205 --> TPS22918 --> AP2112K --> 3.3V rail
-                                                                                 |
-                                                                                 +-- ESP32-S3
-                                                                                 +-- ST7796S display
-                                                                                 +-- GT911 touch
-                                                                                 +-- MAX17048
+USB-C 5V --> TP4056 --> LiPo 3.7V --> DW01A/FS8205A --> ME6211 --> 3.3V rail
+                                                                      |
+                                                                      +-- ESP32-S3
+                                                                      +-- ST7796S display
+                                                                      +-- GT911 touch
+                                                                      +-- MAX17048
 ```
 
-The AP2112K-3.3 is a low-dropout regulator with 600mA output. Dropout voltage is ~250mV, so it works down to ~3.55V LiPo voltage. Below that, the battery is near empty anyway (3.0V cutoff from DW01A).
+The ME6211C33M5 is a low-dropout regulator with 500mA output. Dropout voltage is ~100mV at light load, so it works down to ~3.4V LiPo voltage. Below that, the battery is near empty anyway (3.0V cutoff from DW01A).
 
-**Current budget note:** ESP32-S3 peak draw during WiFi TX is ~500mA. ST7796S backlight adds ~40-80mA, GT911 ~10mA, MAX17048 ~50uA. Combined peak may approach or exceed 600mA — verify during prototyping. If insufficient, consider upgrading to a higher-current regulator (e.g., AP2114H-3.3, 1A output).
+**Current budget note:** ESP32-S3 peak draw during WiFi TX is ~500mA. ST7796S backlight adds ~40-80mA, GT911 ~10mA, MAX17048 ~50uA. Combined peak may reach or exceed 500mA — verify during prototyping. If insufficient, consider upgrading to a higher-current regulator.
 
 ### GPIO Pin Mapping
 
 | Function | ESP32-S3 Pin | Interface | Notes |
 |----------|-------------|-----------|-------|
-| Display MOSI | GPIO 11 | SPI (FSPI) | FSPI default |
-| Display SCLK | GPIO 12 | SPI (FSPI) | FSPI default |
-| Display CS | GPIO 10 | SPI (FSPI) | FSPI default |
-| Display DC | GPIO 9 | GPIO | Data/command select |
-| Display RST | GPIO 8 | GPIO | Reset, low active |
-| Display BL | GPIO 7 | PWM | Backlight brightness control |
-| Touch SDA | GPIO 1 | I2C | Shared bus with MAX17048 |
-| Touch SCL | GPIO 2 | I2C | Shared bus with MAX17048 |
-| Touch INT | GPIO 3 | GPIO (input) | Interrupt, active low |
-| Touch RST | GPIO 4 | GPIO | Reset, low active |
-| Fuel gauge SDA | GPIO 1 | I2C | Shared bus with GT911 (addr: 0x36) |
-| Fuel gauge SCL | GPIO 2 | I2C | Shared bus with GT911 (addr: 0x36) |
-| UART TX (RFID) | GPIO 17 | UART1 | Future Chameleon Tiny |
-| UART RX (RFID) | GPIO 18 | UART1 | Future Chameleon Tiny |
-| Power button | GPIO 5 | GPIO (input) | Interrupt for wake/sleep |
-| USB D+ | GPIO 20 | USB-JTAG | Built-in |
-| USB D- | GPIO 19 | USB-JTAG | Built-in |
+| BOOT | IO0 | GPIO | Boot mode select (SW1) |
+| I2C SDA | IO1 | I2C | Shared: GT911 touch + MAX17048 |
+| I2C SCL | IO2 | I2C | Shared: GT911 touch + MAX17048 |
+| Touch INT | IO3 | GPIO (input) | Interrupt, active low |
+| Touch RST | IO4 | GPIO | Reset, low active |
+| Display BL | IO7 | PWM | Backlight brightness control |
+| Display RST | IO8 | GPIO | Reset, low active |
+| Display DC | IO9 | GPIO | Data/command select |
+| Display CS | IO10 | SPI | Chip select, low active |
+| Display MOSI | IO11 | SPI | SPI data out |
+| Display SCLK | IO12 | SPI | SPI clock |
+| Display MISO | IO13 | SPI | SPI data in |
+| USB D- | USB_D- | USB-JTAG | Built-in USB (pin 13) |
+| USB D+ | USB_D+ | USB-JTAG | Built-in USB (pin 14) |
+| EN | EN | — | R10 10k pull-up + C9 100nF RC + SW2 RESET |
 
-**I2C bus sharing:** The GT911 touch controller (default address: 0x5D) and MAX17048 fuel gauge (address: 0x36) share the same I2C bus on GPIO 1/2. No address conflict.
+**I2C bus sharing:** The GT911 touch controller (default address: 0x5D) and MAX17048 fuel gauge (address: 0x36) share the same I2C bus on IO1/IO2. No address conflict. Pull-ups: R8 4.7k (SCL), R9 4.7k (SDA).
 
-Pin assignments are preliminary and subject to change during PCB layout to optimize routing.
+**Unused pins:** IO5, IO6, IO14-IO18, IO21, IO35-IO48, TXD0, RXD0 are marked no-connect.
 
 ## BOM Estimate
 
 | Category | Item | Cost |
 |----------|------|------|
-| MCU | ESP32-S3-WROOM-1-N16R8 | $4-5 |
+| MCU | ESP32-S3-WROOM-1U | $4-5 |
 | Display | Waveshare 3.5" RPi LCD (F) | ~$20 |
 | Battery | 3.7V 3000mAh LiPo pouch | $5-8 |
-| Charger IC | TP4056 | $0.20 |
-| Protection | DW01A + FS8205 | $0.30 |
-| LDO | AP2112K-3.3 | $0.30 |
-| Soft switch | TPS22918 | $0.80 |
-| Fuel gauge | MAX17048 | $2-3 |
+| Charger IC | TP4056 (ESOP-8) | $0.20 |
+| Protection | DW01A + FS8205A | $0.30 |
+| LDO | ME6211C33M5 | $0.20 |
+| Fuel gauge | MAX17048G+T10 | $2-3 |
 | Connector | USB-C (16-pin) | $0.30 |
-| Button | Tactile switch | $0.10 |
+| Buttons | 2x tactile switch (BOOT + RESET) | $0.20 |
+| LEDs | 2x LED + resistors (CHG/STDBY) | $0.20 |
 | Passives | Resistors, capacitors, etc. | $1-2 |
 | PCB fab | JLCPCB 2-layer + SMT assembly | $10-30 |
-| **Total (without RFID)** | | **~$45-70** |
-| RFID (future) | Chameleon Tiny module | $35 |
-| **Total (with RFID)** | | **~$80-105** |
+| **Total** | | **~$45-70** |
