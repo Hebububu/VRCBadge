@@ -109,7 +109,7 @@ The ME6211C33M5 is a low-dropout regulator with 500mA output. Dropout voltage is
 | Display CS | IO10 | SPI | Chip select, low active |
 | Display MOSI | IO11 | SPI | SPI data out |
 | Display SCLK | IO12 | SPI | SPI clock |
-| Display MISO | IO13 | SPI | SPI data in |
+| Display MISO | IO13 | SPI | Wired but unused (SPI is write-only) |
 | USB D- | USB_D- | USB-JTAG | Built-in USB (pin 13) |
 | USB D+ | USB_D+ | USB-JTAG | Built-in USB (pin 14) |
 | EN | EN | — | R10 10k pull-up + C9 100nF RC + SW2 RESET |

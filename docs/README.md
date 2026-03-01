@@ -6,6 +6,7 @@ A wearable digital badge with dynamic display, changeable avatar, and future RFI
 
 ### [Hardware](./hardware/)
 - [Overview](./hardware/overview.md) - ESP32-S3 platform, Waveshare 3.5" display, PCB design, GPIO mapping, BOM
+- [PCB Layout](./hardware/pcb.md) - Board dimensions, mounting holes, component placement
 
 ### [Software](./software/)
 - [Architecture](./software/architecture.md) - System architecture, tech stack, data flow
