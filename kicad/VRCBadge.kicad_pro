@@ -597,6 +597,14 @@
       "version": 1
     },
     "net_format_name": "",
+    "ngspice": {
+      "fix_include_paths": true,
+      "meta": {
+        "version": 0
+      },
+      "model_mode": 4,
+      "workbook_filename": ""
+    },
     "page_layout_descr_file": "",
     "plot_directory": "",
     "space_save_all_events": true,
@@ -613,18 +621,6 @@
     [
       "5848c585-af30-4d48-87e3-721d2ec71b1d",
       "Root"
-    ],
-    [
-      "d669a577-8fc2-4303-b1c0-0237daa8d51d",
-      "power"
-    ],
-    [
-      "95d38c61-ae72-4b61-a0d0-5eefcd080d33",
-      "mcu"
-    ],
-    [
-      "06be15b7-7363-4216-94f2-1f997c0531fe",
-      "peripheral"
     ]
   ],
   "text_variables": {}

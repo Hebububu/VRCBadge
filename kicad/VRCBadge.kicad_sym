@@ -676,55 +676,55 @@
         (stroke (width 0) (type default) (color 0 0 0 0))
         (fill (type none))
       )
-      (pin unspecified line
+      (pin passive line
         (at -12.70 2.54 0)
         (length 2.54)
         (name "CTG" (effects (font (size 1.27 1.27))))
         (number "1" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin input line
         (at -12.70 -0.00 0)
         (length 2.54)
         (name "CELL" (effects (font (size 1.27 1.27))))
         (number "2" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin power_in line
         (at -12.70 -2.54 0)
         (length 2.54)
         (name "VDD" (effects (font (size 1.27 1.27))))
         (number "3" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin power_in line
         (at -12.70 -5.08 0)
         (length 2.54)
         (name "GND" (effects (font (size 1.27 1.27))))
         (number "4" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin open_collector line
         (at 12.70 -5.08 180)
         (length 2.54)
         (name "~{ALRT}" (effects (font (size 1.27 1.27))))
         (number "5" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin input line
         (at 12.70 -2.54 180)
         (length 2.54)
         (name "QSTRT" (effects (font (size 1.27 1.27))))
         (number "6" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin bidirectional line
         (at 12.70 -0.00 180)
         (length 2.54)
         (name "SCL" (effects (font (size 1.27 1.27))))
         (number "7" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin bidirectional line
         (at 12.70 2.54 180)
         (length 2.54)
         (name "SDA" (effects (font (size 1.27 1.27))))
         (number "8" (effects (font (size 1.27 1.27))))
       )
-      (pin unspecified line
+      (pin power_in line
         (at 12.70 5.08 180)
         (length 2.54)
         (name "EP" (effects (font (size 1.27 1.27))))
