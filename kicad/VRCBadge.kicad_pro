@@ -41,14 +41,14 @@
           "height": 1.27,
           "width": 2.54
         },
-        "silk_line_width": 0.1,
+        "silk_line_width": 0.5,
         "silk_text_italic": false,
-        "silk_text_size_h": 1.0,
+        "silk_text_size_h": 0.5,
         "silk_text_size_v": 0.5,
         "silk_text_thickness": 0.1,
         "silk_text_upright": true,
         "zones": {
-          "min_clearance": 0.5
+          "min_clearance": 0.3
         }
       },
       "diff_pair_dimensions": [
@@ -197,7 +197,13 @@
         }
       ],
       "track_widths": [
-        0.0
+        0.0,
+        0.1582,
+        0.2,
+        0.3,
+        0.4493,
+        0.5,
+        1.0
       ],
       "tuning_pattern_settings": {
         "diff_pair_defaults": {
