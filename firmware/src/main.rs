@@ -207,6 +207,24 @@ fn main() -> anyhow::Result<()> {
         }
     });
 
+    // Wire virtual keyboard key dispatch.
+    // When a key is tapped on the on-screen keyboard, dispatch it as a
+    // KeyPressed + KeyReleased event so Slint routes it to the focused TextInput.
+    {
+        let weak = ui.as_weak();
+        ui.global::<VirtualKeyboardHandler>()
+            .on_key_pressed(move |key| {
+                if let Some(ui) = weak.upgrade() {
+                    ui.window()
+                        .dispatch_event(slint::platform::WindowEvent::KeyPressed {
+                            text: key.clone(),
+                        });
+                    ui.window()
+                        .dispatch_event(slint::platform::WindowEvent::KeyReleased { text: key });
+                }
+            });
+    }
+
     log::info!("Boot complete, entering main loop");
 
     // --- Main event loop ---

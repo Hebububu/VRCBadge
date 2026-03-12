@@ -1,0 +1,224 @@
+// Virtual keyboard for touchscreen-only input.
+// Simplified from the official Slint virtual_keyboard example.
+// Uses Unicode characters for special keys (no icon assets needed).
+
+export struct KeyModel {
+    key: string,
+    shift-key: string,
+}
+
+export global VirtualKeyboardHandler {
+    // Two key sets: letters (0) and numbers/symbols (1)
+    in property <[[[KeyModel]]]> default-key-sets: [
+        // Key set 0: Letters
+        [
+            [
+                { key: "q", shift-key: "Q" },
+                { key: "w", shift-key: "W" },
+                { key: "e", shift-key: "E" },
+                { key: "r", shift-key: "R" },
+                { key: "t", shift-key: "T" },
+                { key: "y", shift-key: "Y" },
+                { key: "u", shift-key: "U" },
+                { key: "i", shift-key: "I" },
+                { key: "o", shift-key: "O" },
+                { key: "p", shift-key: "P" },
+            ],
+            [
+                { key: "a", shift-key: "A" },
+                { key: "s", shift-key: "S" },
+                { key: "d", shift-key: "D" },
+                { key: "f", shift-key: "F" },
+                { key: "g", shift-key: "G" },
+                { key: "h", shift-key: "H" },
+                { key: "j", shift-key: "J" },
+                { key: "k", shift-key: "K" },
+                { key: "l", shift-key: "L" },
+            ],
+            [
+                { key: "z", shift-key: "Z" },
+                { key: "x", shift-key: "X" },
+                { key: "c", shift-key: "C" },
+                { key: "v", shift-key: "V" },
+                { key: "b", shift-key: "B" },
+                { key: "n", shift-key: "N" },
+                { key: "m", shift-key: "M" },
+            ],
+        ],
+        // Key set 1: Numbers / symbols
+        [
+            [
+                { key: "1", shift-key: "!" },
+                { key: "2", shift-key: "@" },
+                { key: "3", shift-key: "#" },
+                { key: "4", shift-key: "$" },
+                { key: "5", shift-key: "%" },
+                { key: "6", shift-key: "^" },
+                { key: "7", shift-key: "&" },
+                { key: "8", shift-key: "*" },
+                { key: "9", shift-key: "(" },
+                { key: "0", shift-key: ")" },
+            ],
+            [
+                { key: "-", shift-key: "_" },
+                { key: "=", shift-key: "+" },
+                { key: "[", shift-key: "{" },
+                { key: "]", shift-key: "}" },
+                { key: "\\", shift-key: "|" },
+                { key: ";", shift-key: ":" },
+                { key: "'", shift-key: "\"" },
+                { key: "/", shift-key: "?" },
+                { key: ".", shift-key: ">" },
+            ],
+            [
+                { key: "`", shift-key: "~" },
+                { key: ",", shift-key: "<" },
+                { key: ".", shift-key: ">" },
+                { key: "?", shift-key: "?" },
+                { key: "!", shift-key: "!" },
+            ],
+        ],
+    ];
+
+    out property <int> current-key-set: 0;
+    out property <[[KeyModel]]> keys: default-key-sets[self.current-key-set];
+
+    callback key-pressed(/* key */ string);
+
+    public function switch-keyboard() {
+        if (self.current-key-set == 0) {
+            self.current-key-set = 1;
+        } else {
+            self.current-key-set = 0;
+        }
+    }
+}
+
+// Single key button
+component KeyButton inherits Rectangle {
+    in property <string> display-text;
+    in property <float> stretch: 0;
+
+    callback pressed();
+
+    min-width: 28px;
+    min-height: 36px;
+    horizontal-stretch: root.stretch;
+    border-radius: 4px;
+    background: i-touch.pressed ? #555555 : #373737;
+
+    Text {
+        text: root.display-text;
+        font-size: 14px;
+        color: #ffffff;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+
+    i-touch := TouchArea {
+        clicked => {
+            root.pressed();
+        }
+    }
+}
+
+export component VirtualKeyboard inherits Rectangle {
+    private property <bool> shift;
+
+    callback close();
+
+    background: #1c1c1c;
+    height: 192px;
+
+    // Block touch events from passing through to content below
+    TouchArea {}
+
+    VerticalLayout {
+        padding: 6px;
+        spacing: 4px;
+
+        for row[index] in VirtualKeyboardHandler.keys: HorizontalLayout {
+            spacing: 3px;
+
+            // Row 2 (index == 2): shift key on the left
+            if index == 2: KeyButton {
+                display-text: root.shift ? "\u{21E7}" : "\u{21E7}";
+                background: root.shift ? #555580 : #373737;
+                pressed => {
+                    root.shift = !root.shift;
+                }
+            }
+
+            for km in row: KeyButton {
+                display-text: root.shift ? km.shift-key : km.key;
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(root.shift ? km.shift-key : km.key);
+                    root.shift = false;
+                }
+            }
+
+            // Row 2 (index == 2): backspace on the right
+            if index == 2: KeyButton {
+                display-text: "\u{232B}";
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(Key.Backspace);
+                }
+            }
+        }
+
+        // Bottom row: close, layout toggle, space, enter
+        HorizontalLayout {
+            spacing: 3px;
+
+            // Close keyboard
+            KeyButton {
+                display-text: "\u{25BC}";
+                pressed => {
+                    root.close();
+                }
+            }
+
+            // Toggle letters / numbers
+            KeyButton {
+                display-text: VirtualKeyboardHandler.current-key-set == 0 ? "123" : "ABC";
+                pressed => {
+                    VirtualKeyboardHandler.switch-keyboard();
+                }
+            }
+
+            // Space bar
+            KeyButton {
+                display-text: " ";
+                stretch: 1;
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(" ");
+                    root.shift = false;
+                }
+            }
+
+            // Left arrow
+            KeyButton {
+                display-text: "\u{2190}";
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(Key.LeftArrow);
+                }
+            }
+
+            // Right arrow
+            KeyButton {
+                display-text: "\u{2192}";
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(Key.RightArrow);
+                }
+            }
+
+            // Enter / Return
+            KeyButton {
+                display-text: "\u{23CE}";
+                pressed => {
+                    VirtualKeyboardHandler.key-pressed(Key.Return);
+                }
+            }
+        }
+    }
+}

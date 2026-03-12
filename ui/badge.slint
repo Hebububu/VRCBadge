@@ -1,4 +1,5 @@
-import { VerticalBox, HorizontalBox, Slider } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Slider, TextInputInterface } from "std-widgets.slint";
+import { VirtualKeyboard, VirtualKeyboardHandler } from "virtual_keyboard.slint";
 
 // --- Reusable page header (back arrow + title) ---
 component PageHeader inherits Rectangle {
@@ -804,6 +805,20 @@ export component BadgeUI inherits Window {
 
         go-back => {
             root.current-page = 1;
+        }
+    }
+
+    // Virtual keyboard overlay (must be last for Z-order on top).
+    // Visibility is driven by whether any TextInput has focus.
+    VirtualKeyboard {
+        visible: TextInputInterface.text-input-focused;
+        width: parent.width;
+        x: 0px;
+        y: parent.height - self.height;
+
+        close => {
+            // Send Escape key to defocus the TextInput, which hides the keyboard
+            VirtualKeyboardHandler.key-pressed(Key.Escape);
         }
     }
 }
