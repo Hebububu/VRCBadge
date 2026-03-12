@@ -61,7 +61,7 @@ button.secondary:hover{background:#4a4a6a}
   <!-- Avatar Section -->
   <div class="section">
     <div class="section-title">Profile Picture</div>
-    <p class="hint">Image will be cropped to 150 x 150</p>
+    <p class="hint">Image will be cropped to 240 x 300</p>
     <div class="upload-row">
       <input type="file" id="avatar-file" accept="image/*">
       <br>
@@ -192,7 +192,7 @@ function saveProfile() {
 loadProfile();
 
 // --- Avatar Upload ---
-var AW = 150, AH = 150;
+var AW = 240, AH = 300;
 var avatarFile = document.getElementById('avatar-file');
 var avatarBtn = document.getElementById('avatar-btn');
 var avatarStatus = document.getElementById('avatar-status');

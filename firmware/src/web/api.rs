@@ -83,7 +83,7 @@ pub fn register(
         req.into_ok_response()?.write_all(b"OK").map(|_| ())
     })?;
 
-    // Avatar image upload (150x150 raw RGB888)
+    // Avatar image upload (240x300 raw RGB888)
     server.fn_handler("/api/avatar", Method::Post, move |mut req| {
         let expected = storage::AVATAR_IMAGE_SIZE;
         let content_len = req

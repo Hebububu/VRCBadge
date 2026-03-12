@@ -72,15 +72,15 @@ component BadgePage inherits Rectangle {
     // === Layer 0: Accent bar (declared BEFORE avatar for Z-order) ===
     Rectangle {
         x: 0px;
-        y: 140px;
+        y: 160px;
         width: parent.width;
         height: 48px;
         background: root.tagline-background-color;
 
         // Tagline text on the bar
         Text {
-            x: 260px;
-            width: parent.width - 280px;
+            x: 310px;
+            width: parent.width - 330px;
             text: root.tagline;
             font-size: 20px;
             font-weight: 500;
@@ -90,23 +90,25 @@ component BadgePage inherits Rectangle {
         }
     }
 
-    // === Layer 1: Avatar (on top of accent bar) ===
+    // === Layer 1: Avatar (3:4 ratio, on top of accent bar) ===
+    // Rounded corners are baked into the image pixels in Rust because Slint's
+    // software renderer does not support rounded clipping (upstream #4176).
     Rectangle {
         x: 30px;
-        y: 60px;
-        width: 200px;
-        height: 200px;
+        y: 70px;
+        width: 240px;
+        height: 300px;
         border-radius: 20px;
         background: #2a2a4a;
         border-width: 2px;
         border-color: #3a3a5a;
-        clip: true;
 
         Image {
-            source: root.avatar-image.width > 0 ? root.avatar-image : @image-url("../images/profile/sample.png");
+            visible: root.avatar-image.width > 0;
+            source: root.avatar-image;
             width: 100%;
             height: 100%;
-            image-fit: cover;
+            image-fit: fill;
         }
     }
 
@@ -114,9 +116,9 @@ component BadgePage inherits Rectangle {
 
     // Display name
     Text {
-        x: 260px;
-        y: 70px;
-        width: parent.width - 320px;
+        x: 310px;
+        y: 90px;
+        width: parent.width - 370px;
         text: root.display-name;
         font-size: 36px;
         font-weight: 700;
@@ -128,20 +130,20 @@ component BadgePage inherits Rectangle {
 
     // Twitter / X handle
     HorizontalLayout {
-        x: 260px;
-        y: 200px;
-        height: 24px;
+        x: 310px;
+        y: 220px;
+        height: 26px;
         spacing: 6px;
         alignment: start;
 
         Rectangle {
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
 
             Image {
                 source: @image-url("../images/logos/twitter.png");
-                width: 16px;
-                height: 16px;
+                width: 18px;
+                height: 18px;
                 x: 1px;
                 y: 1px;
                 image-fit: contain;
@@ -150,7 +152,7 @@ component BadgePage inherits Rectangle {
 
         Text {
             text: root.twitter-handle;
-            font-size: 18px;
+            font-size: 20px;
             color: #1da1f2;
             vertical-alignment: center;
         }
@@ -158,27 +160,27 @@ component BadgePage inherits Rectangle {
 
     // Discord handle
     HorizontalLayout {
-        x: 260px;
-        y: 230px;
-        height: 24px;
+        x: 310px;
+        y: 253px;
+        height: 26px;
         spacing: 6px;
         alignment: start;
 
         Rectangle {
-            width: 18px;
-            height: 18px;
+            width: 20px;
+            height: 20px;
 
             Image {
                 source: @image-url("../images/logos/discord.png");
-                width: 18px;
-                height: 18px;
+                width: 20px;
+                height: 20px;
                 image-fit: contain;
             }
         }
 
         Text {
             text: root.discord-handle;
-            font-size: 18px;
+            font-size: 20px;
             color: #7289da;
             vertical-alignment: center;
         }

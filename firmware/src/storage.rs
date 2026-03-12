@@ -12,12 +12,12 @@ use esp_idf_sys::{esp, esp_vfs_spiffs_conf_t, esp_vfs_spiffs_register};
 use crate::platform::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 use crate::profile::Profile;
 
-/// Avatar image dimensions (must match the Slint UI container: 150x150).
-pub const AVATAR_WIDTH: u32 = 150;
-pub const AVATAR_HEIGHT: u32 = 150;
+/// Avatar image dimensions (must match the Slint UI container: 240x300, 3:4 ratio).
+pub const AVATAR_WIDTH: u32 = 240;
+pub const AVATAR_HEIGHT: u32 = 300;
 pub const AVATAR_IMAGE_SIZE: usize = (AVATAR_WIDTH * AVATAR_HEIGHT * 3) as usize;
 
-/// Background image dimensions (full display: 480x320).
+/// Background image dimensions (full display: 800x480).
 pub const BACKGROUND_IMAGE_SIZE: usize = (DISPLAY_WIDTH * DISPLAY_HEIGHT * 3) as usize;
 
 /// NVS namespace for badge settings (max 15 chars).
