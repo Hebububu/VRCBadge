@@ -18,6 +18,7 @@ use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::FromValueType;
 use esp_idf_svc::eventloop::EspSystemEventLoop;
 use esp_idf_svc::nvs::EspDefaultNvsPartition;
+use esp_idf_svc::wifi::{BlockingWifi, EspWifi};
 use esp_idf_sys as _;
 use slint::{Image, Rgb8Pixel, SharedPixelBuffer};
 
@@ -98,7 +99,8 @@ fn main() -> anyhow::Result<()> {
 
     // --- WiFi AP + HTTP server ---
     let sys_loop = EspSystemEventLoop::take()?;
-    let (_wifi, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    let (wifi_driver, ap_ip) = wifi::init(peripherals.modem, sys_loop, nvs_partition)?;
+    let wifi_handle: Arc<Mutex<BlockingWifi<EspWifi<'static>>>> = Arc::new(Mutex::new(wifi_driver));
     dns::start(ap_ip)?;
     let pending_background: web::SharedImageData = Arc::new(Mutex::new(None));
     let pending_avatar: web::SharedImageData = Arc::new(Mutex::new(None));
@@ -225,6 +227,32 @@ fn main() -> anyhow::Result<()> {
             });
     }
 
+    // --- Auto-connect to saved WiFi network (background, non-blocking) ---
+    // Try to connect at boot if credentials are saved. On failure, continue
+    // with AP-only mode and show a dimmed WiFi icon.
+    let mut sta_connected = false;
+    if let Some((ssid, password)) = storage::load_wifi_credentials(&nvs) {
+        log::info!("Auto-connecting to saved WiFi: {ssid}");
+        if let Ok(mut wifi) = wifi_handle.lock() {
+            match wifi::connect_sta(&mut wifi, &ssid, &password) {
+                Ok(ip) => {
+                    ui.set_sta_connected(true);
+                    ui.set_sta_ssid(ssid.into());
+                    ui.set_sta_ip(ip.to_string().into());
+                    sta_connected = true;
+                }
+                Err(e) => {
+                    log::warn!("Auto-connect failed: {e}");
+                    ui.set_sta_connected(false);
+                    // Show toast: will be handled in Stage 3
+                }
+            }
+        }
+    }
+    // Track whether we have saved credentials (for dimmed icon vs hidden)
+    let has_wifi_credentials = storage::load_wifi_credentials(&nvs).is_some();
+    ui.set_has_wifi_credentials(has_wifi_credentials || sta_connected);
+
     log::info!("Boot complete, entering main loop");
 
     // --- Main event loop ---
@@ -241,9 +269,31 @@ fn main() -> anyhow::Result<()> {
         // 3. Poll for updates (~every 2 seconds at 16ms sleep = 125 iterations)
         loop_count = loop_count.wrapping_add(1);
         if loop_count % 125 == 0 {
-            // WiFi client count
+            // WiFi AP client count
             let clients = wifi::connected_clients() as i32;
             ui.set_wifi_clients(clients);
+
+            // WiFi STA connection status
+            if let Ok(wifi) = wifi_handle.try_lock() {
+                match wifi::sta_status(&wifi) {
+                    wifi::StaStatus::Connected { ssid, ip } => {
+                        if !sta_connected {
+                            log::info!("WiFi STA connected: {ssid} ({ip})");
+                            sta_connected = true;
+                        }
+                        ui.set_sta_connected(true);
+                        ui.set_sta_ssid(ssid.into());
+                        ui.set_sta_ip(ip.to_string().into());
+                    }
+                    wifi::StaStatus::Disconnected => {
+                        if sta_connected {
+                            log::warn!("WiFi STA disconnected");
+                            sta_connected = false;
+                        }
+                        ui.set_sta_connected(false);
+                    }
+                }
+            }
 
             // About page: system info + logs
             ui.set_about_uptime(sysinfo::uptime_string(&boot_time).into());

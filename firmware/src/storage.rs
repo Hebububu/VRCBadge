@@ -26,6 +26,12 @@ const NVS_NAMESPACE: &str = "badge";
 /// NVS key for the JSON-serialized profile (max 15 chars).
 const NVS_KEY_PROFILE: &str = "profile";
 
+/// NVS key for saved WiFi station SSID (max 15 chars).
+const NVS_KEY_WIFI_SSID: &str = "wifi_ssid";
+
+/// NVS key for saved WiFi station password (max 15 chars).
+const NVS_KEY_WIFI_PASS: &str = "wifi_pass";
+
 /// SPIFFS mount path.
 const SPIFFS_MOUNT: &str = "/storage";
 
@@ -180,4 +186,63 @@ pub fn save_image(name: &str, data: &[u8]) {
     } else {
         log::info!("Saved {path} ({} KB)", data.len() / 1024);
     }
+}
+
+// ---------------------------------------------------------------------------
+// WiFi Credentials (NVS)
+// ---------------------------------------------------------------------------
+
+/// Load saved WiFi station credentials from NVS.
+///
+/// Returns `None` if no credentials are saved.
+pub fn load_wifi_credentials(nvs: &EspNvs<NvsDefault>) -> Option<(String, String)> {
+    let ssid_len = match nvs.str_len(NVS_KEY_WIFI_SSID) {
+        Ok(Some(len)) => len,
+        _ => return None,
+    };
+
+    let mut ssid_buf = vec![0u8; ssid_len];
+    let ssid = match nvs.get_str(NVS_KEY_WIFI_SSID, &mut ssid_buf) {
+        Ok(Some(s)) => s.to_string(),
+        _ => return None,
+    };
+
+    if ssid.is_empty() {
+        return None;
+    }
+
+    // Password is optional (open networks have empty password)
+    let password = match nvs.str_len(NVS_KEY_WIFI_PASS) {
+        Ok(Some(len)) => {
+            let mut pass_buf = vec![0u8; len];
+            match nvs.get_str(NVS_KEY_WIFI_PASS, &mut pass_buf) {
+                Ok(Some(s)) => s.to_string(),
+                _ => String::new(),
+            }
+        }
+        _ => String::new(),
+    };
+
+    log::info!("Loaded WiFi credentials for SSID: {ssid}");
+    Some((ssid, password))
+}
+
+/// Save WiFi station credentials to NVS.
+pub fn save_wifi_credentials(nvs: &mut EspNvs<NvsDefault>, ssid: &str, password: &str) {
+    if let Err(e) = nvs.set_str(NVS_KEY_WIFI_SSID, ssid) {
+        log::error!("Failed to save WiFi SSID to NVS: {e}");
+        return;
+    }
+    if let Err(e) = nvs.set_str(NVS_KEY_WIFI_PASS, password) {
+        log::error!("Failed to save WiFi password to NVS: {e}");
+        return;
+    }
+    log::info!("WiFi credentials saved for SSID: {ssid}");
+}
+
+/// Delete saved WiFi credentials from NVS.
+pub fn delete_wifi_credentials(nvs: &mut EspNvs<NvsDefault>) {
+    let _ = nvs.remove(NVS_KEY_WIFI_SSID);
+    let _ = nvs.remove(NVS_KEY_WIFI_PASS);
+    log::info!("WiFi credentials deleted");
 }

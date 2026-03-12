@@ -49,6 +49,8 @@ component BadgePage inherits Rectangle {
     in-out property <string> twitter-handle: "@Hebu_VRC";
     in-out property <string> discord-handle: "hebu";
     in-out property <int> battery-percent: 100;
+    in property <bool> sta-connected: false;
+    in property <bool> has-wifi-credentials: false;
     in property <image> background-image;
     in property <image> avatar-image;
     in property <color> background-color: #1a1a2e;
@@ -195,6 +197,32 @@ component BadgePage inherits Rectangle {
         width: 150px;
         height: 64px;
         image-fit: contain;
+    }
+
+    // WiFi indicator (bottom-right, next to battery)
+    // Shown when credentials are saved. Green when connected, dimmed when not.
+    Rectangle {
+        visible: root.has-wifi-credentials;
+        x: parent.width - 200px;
+        y: parent.height - 42px;
+        width: 24px;
+        height: 24px;
+
+        Image {
+            visible: root.sta-connected;
+            source: @image-url("../images/icons/wifi-high.png");
+            width: 24px;
+            height: 24px;
+            image-fit: contain;
+        }
+
+        Image {
+            visible: !root.sta-connected;
+            source: @image-url("../images/icons/wifi-x.png");
+            width: 24px;
+            height: 24px;
+            image-fit: contain;
+        }
     }
 
     // Battery indicator (bottom-right)
@@ -717,6 +745,12 @@ export component BadgeUI inherits Window {
     in-out property <string> about-psram: "0 KB";
     in-out property <string> log-text: "";
 
+    // WiFi station mode properties
+    in-out property <bool> sta-connected: false;
+    in-out property <string> sta-ssid: "";
+    in-out property <string> sta-ip: "";
+    in-out property <bool> has-wifi-credentials: false;
+
     callback brightness-changed(float);
 
     // Badge page
@@ -729,6 +763,8 @@ export component BadgeUI inherits Window {
         twitter-handle: root.twitter-handle;
         discord-handle: root.discord-handle;
         battery-percent: root.battery-percent;
+        sta-connected: root.sta-connected;
+        has-wifi-credentials: root.has-wifi-credentials;
         background-image: root.background-image;
         avatar-image: root.avatar-image;
         background-color: root.badge-background-color;
