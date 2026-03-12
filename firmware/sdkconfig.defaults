@@ -5,8 +5,13 @@ CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_BOOT_INIT=y
 CONFIG_SPIRAM_USE_MALLOC=y
 
-# --- SPI ---
-CONFIG_SPI_MASTER_IN_IRAM=y
+# --- SPIRAM XIP (keep cache active during flash ops for bounce buffer ISR) ---
+CONFIG_SPIRAM_XIP_FROM_PSRAM=y
+CONFIG_SPIRAM_FETCH_INSTRUCTIONS=y
+CONFIG_SPIRAM_RODATA=y
+
+# --- LCD RGB panel ---
+CONFIG_LCD_RGB_RESTART_IN_VSYNC=y
 
 # --- I2C ---
 # Default I2C config is fine; driver configured in code

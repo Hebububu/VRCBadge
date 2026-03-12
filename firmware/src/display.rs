@@ -1,187 +1,246 @@
-use embedded_graphics_core::pixelcolor::raw::RawU16;
-use embedded_graphics_core::pixelcolor::Rgb565;
-use esp_idf_hal::delay::FreeRtos;
-use esp_idf_hal::gpio::{AnyIOPin, AnyOutputPin, PinDriver};
-use esp_idf_hal::spi::config::{Config as SpiConfig, DriverConfig};
-use esp_idf_hal::spi::{Dma, SpiDeviceDriver, SpiDriver, SPI2};
-use mipidsi::interface::SpiInterface;
-use mipidsi::models::ST7796;
-use mipidsi::options::{ColorInversion, ColorOrder, Orientation, Rotation};
-use mipidsi::{Builder, Display};
-use slint::platform::software_renderer::{PhysicalRegion, Rgb565Pixel};
+//! Display driver for the JC8048W550C — ST7262 RGB parallel panel.
+//!
+//! The ST7262 uses the ESP32-S3's built-in LCD_CAM peripheral in 16-bit RGB565
+//! parallel mode. The hardware continuously DMA-refreshes the display from a
+//! framebuffer in PSRAM at the pixel clock rate (~16MHz, ~39 FPS).
+//!
+//! Unlike SPI displays, there are no commands to send — we just write pixels
+//! to the framebuffer and the hardware handles the rest.
+//!
+//! **Bounce buffers**: The framebuffer lives in PSRAM, but DMA reads from two
+//! internal SRAM bounce buffers instead of PSRAM directly. An ISR copies data
+//! from PSRAM to the bounce buffers, avoiding EDMA bandwidth contention with
+//! the CPU, I2C, WiFi, and flash operations that share the PSRAM bus. Without
+//! bounce buffers, the display drifts/shifts when any of these compete for
+//! PSRAM bandwidth.
+//!
+//! The `esp_lcd_rgb_panel` API is not exposed by `esp-idf-sys` bindgen,
+//! so we declare the FFI manually. The C implementation is linked via
+//! `esp_lcd_panel_rgb.c.obj` in the ESP-IDF build.
+
+use slint::platform::software_renderer::Rgb565Pixel;
 
 use crate::platform::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 
-/// Type alias for our concrete display.
+// ---------------------------------------------------------------------------
+// Raw FFI declarations for esp_lcd_rgb_panel (esp_lcd_panel_rgb.h)
+// ---------------------------------------------------------------------------
+
+/// `lcd_clock_source_t` = `SOC_MOD_CLK_PLL_F160M` = 6 in ESP-IDF v5.3
+/// (soc_module_clk_t enum starts at 1: CPU=1, RTC_FAST=2, RTC_SLOW=3, APB=4, PLL_F80M=5, PLL_F160M=6)
+type LcdClockSourceT = i32;
+const LCD_CLK_SRC_PLL160M: LcdClockSourceT = 6;
+
+/// Mirror of `esp_lcd_rgb_timing_t` from esp_lcd_panel_rgb.h
+#[repr(C)]
+#[derive(Debug, Default)]
+struct EspLcdRgbTimingT {
+    pclk_hz: u32,
+    h_res: u32,
+    v_res: u32,
+    hsync_pulse_width: u32,
+    hsync_back_porch: u32,
+    hsync_front_porch: u32,
+    vsync_pulse_width: u32,
+    vsync_back_porch: u32,
+    vsync_front_porch: u32,
+    /// Bitfield flags: hsync_idle_low:1, vsync_idle_low:1, de_idle_high:1,
+    ///                  pclk_active_neg:1, pclk_idle_high:1
+    flags: u32,
+}
+
+/// Mirror of `esp_lcd_rgb_panel_config_t` from esp_lcd_panel_rgb.h.
 ///
-/// Generic parameters:
-///   DI = SpiInterface<'static, SpiDeviceDriver, PinDriver (DC)>
-///   MODEL = ST7796
-///   RST = PinDriver (RST)
-pub type BadgeDisplay = Display<
-    SpiInterface<
-        'static,
-        SpiDeviceDriver<'static, SpiDriver<'static>>,
-        PinDriver<'static, AnyOutputPin, esp_idf_hal::gpio::Output>,
-    >,
-    ST7796,
-    PinDriver<'static, AnyOutputPin, esp_idf_hal::gpio::Output>,
->;
+/// Uses `SOC_LCD_RGB_DATA_WIDTH = 16` for the data_gpio_nums array.
+#[repr(C)]
+struct EspLcdRgbPanelConfigT {
+    clk_src: LcdClockSourceT,
+    timings: EspLcdRgbTimingT,
+    data_width: usize,
+    bits_per_pixel: usize,
+    num_fbs: usize,
+    bounce_buffer_size_px: usize,
+    sram_trans_align: usize, // deprecated but must be present for struct layout
+    psram_trans_align: usize, // union with dma_burst_size
+    hsync_gpio_num: i32,
+    vsync_gpio_num: i32,
+    de_gpio_num: i32,
+    pclk_gpio_num: i32,
+    disp_gpio_num: i32,
+    data_gpio_nums: [i32; 16], // SOC_LCD_RGB_DATA_WIDTH = 16
+    /// Bitfield flags: disp_active_low:1, refresh_on_demand:1, fb_in_psram:1,
+    ///                  double_fb:1, no_fb:1, bb_invalidate_cache:1
+    flags: u32,
+}
 
-/// SPI/DMA buffer size for the mipidsi SPI interface.
-/// With full-framebuffer rendering, each dirty rect can be thousands of bytes.
-/// DMA excels at large bulk transfers — the setup/teardown overhead is amortized.
-const SPI_BUFFER_SIZE: usize = 4096;
+extern "C" {
+    fn esp_lcd_new_rgb_panel(
+        rgb_panel_config: *const EspLcdRgbPanelConfigT,
+        ret_panel: *mut esp_idf_sys::esp_lcd_panel_handle_t,
+    ) -> esp_idf_sys::esp_err_t;
 
-/// Total number of pixels in the framebuffer (480 × 320).
+    fn esp_lcd_rgb_panel_get_frame_buffer(
+        panel: esp_idf_sys::esp_lcd_panel_handle_t,
+        fb_num: u32,
+        fb0: *mut *mut core::ffi::c_void,
+        ...
+    ) -> esp_idf_sys::esp_err_t;
+}
+
+// ---------------------------------------------------------------------------
+// Pin assignments (fixed on JC8048W550 board)
+// ---------------------------------------------------------------------------
+
+/// Data Enable
+const PIN_DE: i32 = 40;
+/// Vertical Sync
+const PIN_VSYNC: i32 = 41;
+/// Horizontal Sync
+const PIN_HSYNC: i32 = 39;
+/// Pixel Clock
+const PIN_PCLK: i32 = 42;
+
+/// 16-bit RGB565 data bus — order: B[0:4], G[0:5], R[0:4]
+/// This matches the ESP-IDF `data_gpio_nums` array layout for little-endian RGB565.
+const DATA_PINS: [i32; 16] = [
+    8, 3, 46, 9, 1, // B0..B4
+    5, 6, 7, 15, 16, 4, // G0..G5
+    45, 48, 47, 21, 14, // R0..R4
+];
+
+// ---------------------------------------------------------------------------
+// Timing parameters (from vendor Arduino demos)
+// ---------------------------------------------------------------------------
+
+/// Pixel clock frequency in Hz.
+/// 16MHz gives ~39 FPS with the standard porch values.
+const PIXEL_CLOCK_HZ: u32 = 16_000_000;
+
+/// Horizontal/Vertical sync timing (symmetric 8/4/8 for this panel).
+const H_FRONT_PORCH: u32 = 8;
+const H_PULSE_WIDTH: u32 = 4;
+const H_BACK_PORCH: u32 = 8;
+const V_FRONT_PORCH: u32 = 8;
+const V_PULSE_WIDTH: u32 = 4;
+const V_BACK_PORCH: u32 = 8;
+
+/// Total number of pixels in the framebuffer (800 x 480).
 const FRAMEBUFFER_PIXELS: usize = DISPLAY_WIDTH as usize * DISPLAY_HEIGHT as usize;
 
-/// Initialize the ST7796S display over SPI.
+/// Opaque handle to the ESP-IDF RGB panel.
+/// We keep this alive so the DMA refresh continues.
+pub struct RgbDisplay {
+    _panel: esp_idf_sys::esp_lcd_panel_handle_t,
+}
+
+/// Initialize the ST7262 RGB parallel display via ESP-IDF's lcd_rgb_panel driver.
 ///
-/// Returns the initialized display in landscape orientation (480x320).
-pub fn init(
-    spi: SPI2,
-    sclk: AnyOutputPin,
-    mosi: AnyOutputPin,
-    cs: AnyOutputPin,
-    dc: AnyOutputPin,
-    rst: AnyOutputPin,
-) -> anyhow::Result<BadgeDisplay> {
-    // Configure SPI bus — 80MHz with write_only mode (no dummy bytes).
-    // write_only sets SPI_DEVICE_NO_DUMMY, removing the dummy clock cycle normally
-    // inserted for full-duplex reads, which unlocks 80MHz on the ESP32-S3.
-    // ST7796S datasheet specifies 66MHz write max, but 80MHz works in practice.
-    // If display shows glitches, reduce to 40_000_000.
-    let spi_config = SpiConfig::new()
-        .baudrate(80_000_000.into())
-        .write_only(true);
+/// Returns the display handle (must be kept alive) and a `'static` reference to the
+/// framebuffer in PSRAM. The framebuffer is allocated by the ESP-IDF driver and is
+/// continuously DMA-scanned to the display.
+pub fn init() -> anyhow::Result<(RgbDisplay, &'static mut [Rgb565Pixel])> {
+    // Build the timing flags bitfield (matches Arduino_GFX library config):
+    // bit 0: hsync_idle_low = 1 (hsync polarity = 0 -> idle low)
+    // bit 1: vsync_idle_low = 1 (vsync polarity = 0 -> idle low)
+    // bit 2: de_idle_high = 0
+    // bit 3: pclk_active_neg = 1 (data latched on falling edge)
+    // bit 4: pclk_idle_high = 0
+    let timing_flags: u32 = (1 << 0) | (1 << 1) | (1 << 3);
 
-    // Enable DMA for large bulk transfers. With full-framebuffer rendering,
-    // each dirty rect sends thousands of bytes in a single set_pixels call.
-    // DMA overhead is amortized over the large transfer size.
-    let driver_config = DriverConfig::new().dma(Dma::Auto(SPI_BUFFER_SIZE));
-
-    let spi_driver = SpiDriver::new(spi, sclk, mosi, None::<AnyIOPin>, &driver_config)?;
-
-    let spi_device = SpiDeviceDriver::new(spi_driver, Some(cs), &spi_config)?;
-
-    // D/C pin (data/command select)
-    let dc_pin = PinDriver::output(dc)?;
-
-    // Reset pin
-    let rst_pin = PinDriver::output(rst)?;
-
-    // Allocate SPI interface buffer in DMA-capable internal SRAM.
-    // mipidsi copies pixels from the framebuffer (PSRAM) into this buffer (internal SRAM),
-    // then DMA sends from internal SRAM to the SPI peripheral — no PSRAM bus contention
-    // during the actual SPI transfer.
-    let buffer: &'static mut [u8] = unsafe {
-        let ptr = esp_idf_sys::heap_caps_malloc(
-            SPI_BUFFER_SIZE,
-            esp_idf_sys::MALLOC_CAP_DMA | esp_idf_sys::MALLOC_CAP_INTERNAL,
-        ) as *mut u8;
-        assert!(
-            !ptr.is_null(),
-            "Failed to allocate DMA buffer in internal SRAM"
-        );
-        core::ptr::write_bytes(ptr, 0, SPI_BUFFER_SIZE);
-        core::slice::from_raw_parts_mut(ptr, SPI_BUFFER_SIZE)
+    let timings = EspLcdRgbTimingT {
+        pclk_hz: PIXEL_CLOCK_HZ,
+        h_res: DISPLAY_WIDTH,
+        v_res: DISPLAY_HEIGHT,
+        hsync_pulse_width: H_PULSE_WIDTH,
+        hsync_back_porch: H_BACK_PORCH,
+        hsync_front_porch: H_FRONT_PORCH,
+        vsync_pulse_width: V_PULSE_WIDTH,
+        vsync_back_porch: V_BACK_PORCH,
+        vsync_front_porch: V_FRONT_PORCH,
+        flags: timing_flags,
     };
 
-    // Build display interface
-    let di = SpiInterface::new(spi_device, dc_pin, buffer);
+    // Panel config flags bitfield:
+    // bit 0: disp_active_low = 0
+    // bit 1: refresh_on_demand = 0
+    // bit 2: fb_in_psram = 1
+    // bit 3: double_fb = 0
+    // bit 4: no_fb = 0
+    // bit 5: bb_invalidate_cache = 1 (free cache lines after bounce buffer copy)
+    let panel_flags: u32 = (1 << 2) | (1 << 5); // fb_in_psram + bb_invalidate_cache
 
-    // Initialize display
-    let display = Builder::new(ST7796, di)
-        .reset_pin(rst_pin)
-        .color_order(ColorOrder::Bgr)
-        .invert_colors(ColorInversion::Inverted)
-        .display_size(320, 480) // Native portrait resolution
-        .orientation(Orientation::new().rotate(Rotation::Deg90).flip_vertical()) // Landscape, un-mirror
-        .init(&mut FreeRtos)
-        .map_err(|e| anyhow::anyhow!("Display init failed: {:?}", e))?;
+    // Bounce buffer: 10 scanlines = 8000 pixels.
+    // Two internal SRAM buffers (16KB each, 32KB total) are allocated by the driver.
+    // DMA reads from these instead of PSRAM directly, eliminating bandwidth
+    // contention with CPU/I2C/WiFi/flash that causes pixel drifting.
+    // 800*480 = 384,000 px / 8,000 = 48 (exact multiple, required by driver).
+    const BOUNCE_BUFFER_LINES: usize = 10;
+    let bounce_buffer_size_px = BOUNCE_BUFFER_LINES * DISPLAY_WIDTH as usize;
+
+    let panel_config = EspLcdRgbPanelConfigT {
+        clk_src: LCD_CLK_SRC_PLL160M,
+        timings,
+        data_width: 16,
+        bits_per_pixel: 0, // 0 = same as data_width (16-bit RGB565)
+        num_fbs: 1,
+        bounce_buffer_size_px,
+        sram_trans_align: 8,
+        psram_trans_align: 64,
+        hsync_gpio_num: PIN_HSYNC,
+        vsync_gpio_num: PIN_VSYNC,
+        de_gpio_num: PIN_DE,
+        pclk_gpio_num: PIN_PCLK,
+        disp_gpio_num: -1, // not used
+        data_gpio_nums: DATA_PINS,
+        flags: panel_flags,
+    };
+
+    // Create the panel
+    let mut panel: esp_idf_sys::esp_lcd_panel_handle_t = core::ptr::null_mut();
+    esp_idf_sys::esp!(unsafe { esp_lcd_new_rgb_panel(&panel_config, &mut panel) })
+        .map_err(|e| anyhow::anyhow!("esp_lcd_new_rgb_panel failed: {e}"))?;
+
+    // Reset and init via the standard panel API (these ARE in esp-idf-sys bindings)
+    esp_idf_sys::esp!(unsafe { esp_idf_sys::esp_lcd_panel_reset(panel) })
+        .map_err(|e| anyhow::anyhow!("esp_lcd_panel_reset failed: {e}"))?;
+
+    esp_idf_sys::esp!(unsafe { esp_idf_sys::esp_lcd_panel_init(panel) })
+        .map_err(|e| anyhow::anyhow!("esp_lcd_panel_init failed: {e}"))?;
+
+    // Get the framebuffer pointer allocated by the driver
+    let mut fb_ptr: *mut core::ffi::c_void = core::ptr::null_mut();
+    esp_idf_sys::esp!(unsafe { esp_lcd_rgb_panel_get_frame_buffer(panel, 1, &mut fb_ptr) })
+        .map_err(|e| anyhow::anyhow!("esp_lcd_rgb_panel_get_frame_buffer failed: {e}"))?;
+
+    assert!(!fb_ptr.is_null(), "RGB panel framebuffer pointer is null");
+
+    // Wrap the framebuffer as a Rgb565Pixel slice.
+    // The ESP-IDF RGB panel driver owns this memory and continuously DMA-reads it.
+    let framebuffer =
+        unsafe { core::slice::from_raw_parts_mut(fb_ptr as *mut Rgb565Pixel, FRAMEBUFFER_PIXELS) };
 
     log::info!(
-        "ST7796S display initialized ({}x{} landscape)",
+        "ST7262 RGB display initialized ({}x{}, {}KB framebuffer in PSRAM)",
         DISPLAY_WIDTH,
-        DISPLAY_HEIGHT
+        DISPLAY_HEIGHT,
+        FRAMEBUFFER_PIXELS * 2 / 1024,
     );
 
-    Ok(display)
+    Ok((RgbDisplay { _panel: panel }, framebuffer))
 }
 
-/// Allocate a full 480×320 RGB565 framebuffer in PSRAM.
+/// No-op flush — bounce buffers handle cache coherency.
 ///
-/// Returns a leaked `'static` slice of `Rgb565Pixel` (307,200 bytes).
-/// Uses `heap_caps_malloc` with `MALLOC_CAP_SPIRAM` to guarantee PSRAM placement,
-/// preserving internal SRAM for stack, DMA buffers, and WiFi.
-pub fn allocate_framebuffer() -> &'static mut [Rgb565Pixel] {
-    let size_bytes = FRAMEBUFFER_PIXELS * core::mem::size_of::<Rgb565Pixel>();
-    unsafe {
-        let ptr = esp_idf_sys::heap_caps_malloc(size_bytes, esp_idf_sys::MALLOC_CAP_SPIRAM)
-            as *mut Rgb565Pixel;
-        assert!(
-            !ptr.is_null(),
-            "Failed to allocate {}KB framebuffer in PSRAM",
-            size_bytes / 1024
-        );
-        core::ptr::write_bytes(ptr, 0, FRAMEBUFFER_PIXELS);
-        log::info!(
-            "Framebuffer allocated: {}KB in PSRAM ({} pixels)",
-            size_bytes / 1024,
-            FRAMEBUFFER_PIXELS
-        );
-        core::slice::from_raw_parts_mut(ptr, FRAMEBUFFER_PIXELS)
-    }
-}
-
-/// Send only the dirty regions from the framebuffer to the display.
+/// With bounce buffers enabled, the ESP-IDF RGB panel driver copies data from
+/// the PSRAM framebuffer to internal SRAM bounce buffers via an ISR, handling
+/// all cache synchronization internally. We no longer need manual
+/// `Cache_WriteBack_Addr` calls.
 ///
-/// `PhysicalRegion` contains up to ~3-7 non-overlapping rectangles from Slint's
-/// dirty tracking. For each rectangle, we send a single `set_pixels` call
-/// (1× CASET + 1× RASET + 1× RAMWR + pixel data stream), which is far more
-/// efficient than the 2,240 transactions needed for line-by-line rendering.
-pub fn send_dirty_region(
-    display: &mut BadgeDisplay,
-    framebuffer: &[Rgb565Pixel],
-    region: PhysicalRegion,
+/// This function exists to keep the call site in main.rs unchanged, making it
+/// easy to swap back to manual flushing if we ever disable bounce buffers.
+pub fn flush_dirty_region(
+    _framebuffer: &[Rgb565Pixel],
+    _region: slint::platform::software_renderer::PhysicalRegion,
 ) {
-    let stride = DISPLAY_WIDTH as usize;
-
-    for (pos, size) in region.iter() {
-        let x = pos.x as usize;
-        let y = pos.y as usize;
-        let w = size.width as usize;
-        let h = size.height as usize;
-
-        if w == 0 || h == 0 {
-            continue;
-        }
-
-        // Extract pixels from the framebuffer in row-major order.
-        // This is zero-copy — the iterator lazily reads from PSRAM and mipidsi
-        // batches pixels into the 4KB internal SRAM SPI buffer before DMA-sending.
-        let pixels = (y..(y + h)).flat_map(move |row| {
-            framebuffer[row * stride + x..row * stride + x + w]
-                .iter()
-                .map(|p| Rgb565::from(RawU16::new(p.0)))
-        });
-
-        if let Err(e) = display.set_pixels(
-            x as u16,
-            y as u16,
-            (x + w - 1) as u16,
-            (y + h - 1) as u16,
-            pixels,
-        ) {
-            log::error!(
-                "Display SPI write failed for rect ({},{} {}x{}): {:?}",
-                x,
-                y,
-                w,
-                h,
-                e
-            );
-        }
-    }
+    // Bounce buffer ISR handles PSRAM -> SRAM copy and cache sync automatically.
 }

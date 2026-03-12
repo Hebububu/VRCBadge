@@ -78,37 +78,32 @@ fn main() -> anyhow::Result<()> {
     slint::platform::set_platform(Box::new(esp_platform))
         .map_err(|e| anyhow::anyhow!("Failed to set Slint platform: {:?}", e))?;
 
-    // --- Display (ST7796S over SPI) ---
-    let mut display = display::init(
-        peripherals.spi2,
-        peripherals.pins.gpio12.into(), // SCLK
-        peripherals.pins.gpio11.into(), // MOSI
-        peripherals.pins.gpio10.into(), // CS
-        peripherals.pins.gpio9.into(),  // DC
-        peripherals.pins.gpio8.into(),  // RST
-    )?;
+    // --- Display (ST7262 RGB parallel panel) ---
+    // The RGB panel driver allocates a framebuffer in PSRAM and continuously
+    // DMA-refreshes the display. No SPI, no manual pixel pushing.
+    let (_display, framebuffer) = display::init()?;
 
-    // --- Framebuffer (480x320 RGB565 in PSRAM) ---
-    let framebuffer = display::allocate_framebuffer();
-
-    // --- Backlight PWM (25kHz, 8-bit = 256 duty levels) ---
+    // --- Backlight PWM (600Hz, 8-bit, GPIO 2) ---
+    // The JC8048W550 backlight is driven through a boost LED driver IC (U5).
+    // GPIO 2 connects to the IC's EN pin, which accepts PWM for dimming.
+    // 600Hz matches the Arduino demos for this board.
     let timer = LedcTimerDriver::new(
         peripherals.ledc.timer0,
         &TimerConfig::new()
-            .frequency(25.kHz().into())
+            .frequency(600.Hz().into())
             .resolution(esp_idf_hal::ledc::Resolution::Bits8),
     )?;
-    let mut backlight = LedcDriver::new(peripherals.ledc.channel0, timer, peripherals.pins.gpio7)?;
+    let mut backlight = LedcDriver::new(peripherals.ledc.channel0, timer, peripherals.pins.gpio2)?;
     let max_duty = backlight.get_max_duty();
     backlight.set_duty(max_duty / 2)?; // Start at 50% brightness
+    log::info!("Backlight PWM initialized (GPIO 2, 600Hz, 50%)");
 
     // --- Touch (GT911 over I2C) ---
     let mut touch = match TouchController::new(
         peripherals.i2c0,
-        peripherals.pins.gpio1.into(), // SDA
-        peripherals.pins.gpio2.into(), // SCL
-        peripherals.pins.gpio4.into(), // Touch RST
-        peripherals.pins.gpio3.into(), // Touch INT
+        peripherals.pins.gpio19.into(), // SDA
+        peripherals.pins.gpio20.into(), // SCL
+        peripherals.pins.gpio38.into(), // Touch RST
     ) {
         Ok(t) => Some(t),
         Err(e) => {
@@ -140,7 +135,7 @@ fn main() -> anyhow::Result<()> {
         ui.set_avatar_image(Image::from_rgb8(buffer));
     }
 
-    // Restore saved background from SPIFFS (460 KB)
+    // Restore saved background from SPIFFS
     if let Some(rgb_data) = storage::load_image("background", storage::BACKGROUND_IMAGE_SIZE) {
         let buffer = SharedPixelBuffer::<Rgb8Pixel>::clone_from_slice(
             &rgb_data,
@@ -150,7 +145,8 @@ fn main() -> anyhow::Result<()> {
         ui.set_background_image(Image::from_rgb8(buffer));
     }
 
-    // Wire brightness slider to backlight PWM (debounced to avoid flicker)
+    // Wire brightness slider to backlight PWM (debounced to avoid flicker).
+    // Converts 10-100% from the UI slider to 0-255 LEDC duty cycle.
     let backlight = RefCell::new(backlight);
     let last_brightness = RefCell::new(50.0_f32);
     ui.on_brightness_changed(move |percent| {
@@ -243,10 +239,12 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        // 4. Render into framebuffer and send only dirty regions to display
+        // 4. Render into framebuffer and flush cache for dirty regions
+        // The RGB panel hardware continuously DMA-refreshes from the framebuffer.
+        // We just need to ensure our writes are visible to the DMA controller.
         window.draw_if_needed(|renderer| {
             let region = renderer.render(framebuffer, platform::DISPLAY_WIDTH as usize);
-            display::send_dirty_region(&mut display, framebuffer, region);
+            display::flush_dirty_region(framebuffer, region);
         });
 
         // 5. Sleep until next event needed

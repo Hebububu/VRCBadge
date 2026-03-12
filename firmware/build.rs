@@ -4,7 +4,7 @@ fn main() {
 
     // Explicit bitmap font sizes matching consolidated UI font sizes.
     // Bitmap fonts render faster and with better quality than SDF on embedded displays.
-    std::env::set_var("SLINT_FONT_SIZES", "14,16,20,24,32");
+    std::env::set_var("SLINT_FONT_SIZES", "14,16,18,20,24,36");
 
     // Compile Slint UI with resources embedded for software renderer.
     // scale_factor(1.0) ensures images are pre-rendered at their declared pixel sizes

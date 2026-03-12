@@ -5,11 +5,11 @@ use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferTyp
 use slint::platform::{Platform, PlatformError, WindowAdapter};
 use slint::PhysicalSize;
 
-/// Display dimensions in landscape orientation (480 wide x 320 tall).
-pub const DISPLAY_WIDTH: u32 = 480;
-pub const DISPLAY_HEIGHT: u32 = 320;
+/// Display dimensions (800 wide x 480 tall, native landscape).
+pub const DISPLAY_WIDTH: u32 = 800;
+pub const DISPLAY_HEIGHT: u32 = 480;
 
-/// Custom Slint platform for ESP32-S3 with ST7796S display.
+/// Custom Slint platform for ESP32-S3 with ST7262 RGB display.
 ///
 /// Uses `MinimalSoftwareWindow` for full framebuffer rendering and
 /// `std::time::Instant` for timekeeping (available in esp-idf std mode).
