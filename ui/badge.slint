@@ -1,5 +1,6 @@
-import { VerticalBox, HorizontalBox, Slider, TextInputInterface } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Slider } from "std-widgets.slint";
 import { VirtualKeyboard, VirtualKeyboardHandler } from "virtual_keyboard.slint";
+export { VirtualKeyboardHandler }
 
 // --- Reusable page header (back arrow + title) ---
 component PageHeader inherits Rectangle {
@@ -514,8 +515,12 @@ component SettingsPage inherits Rectangle {
 component WiFiPage inherits Rectangle {
     in property <int> connected-clients: 0;
     in property <string> ip-address: "192.168.71.1";
+    in property <bool> sta-connected: false;
+    in property <string> sta-ssid: "";
+    in property <string> sta-ip: "";
 
     callback go-back();
+    callback open-wifi-connect();
 
     background: #1a1a2e;
 
@@ -535,12 +540,26 @@ component WiFiPage inherits Rectangle {
         width: parent.width - 40px;
         spacing: 0px;
 
+        // --- Access Point section ---
+        Rectangle {
+            height: 36px;
+            background: transparent;
+
+            Text {
+                x: 16px;
+                text: "Access Point";
+                font-size: 14px;
+                font-weight: 600;
+                color: #555580;
+                vertical-alignment: center;
+            }
+        }
+
         for item in [
-            { label: "Mode", value: "AP Mode" },
             { label: "SSID", value: "VRCBadge" },
             { label: "IP Address", value: root.ip-address },
         ]: Rectangle {
-            height: 52px;
+            height: 48px;
             background: transparent;
 
             HorizontalLayout {
@@ -563,18 +582,17 @@ component WiFiPage inherits Rectangle {
                 }
             }
 
-            // Divider
             Rectangle {
-                y: 51px;
+                y: 47px;
                 width: parent.width;
                 height: 1px;
                 background: #2a2a4a;
             }
         }
 
-        // Connected clients (dynamic value from Rust)
+        // Connected clients
         Rectangle {
-            height: 52px;
+            height: 48px;
             background: transparent;
 
             HorizontalLayout {
@@ -583,7 +601,7 @@ component WiFiPage inherits Rectangle {
                 alignment: space-between;
 
                 Text {
-                    text: "Connected Clients";
+                    text: "Clients";
                     font-size: 18px;
                     color: #888888;
                     vertical-alignment: center;
@@ -597,12 +615,402 @@ component WiFiPage inherits Rectangle {
                 }
             }
 
-            // Divider
+            Rectangle {
+                y: 47px;
+                width: parent.width;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+
+        // --- Station section ---
+        Rectangle {
+            height: 44px;
+            background: transparent;
+
+            Text {
+                x: 16px;
+                text: "Station (External WiFi)";
+                font-size: 14px;
+                font-weight: 600;
+                color: #555580;
+                vertical-alignment: center;
+            }
+        }
+
+        // Station status row
+        Rectangle {
+            height: 48px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                alignment: space-between;
+
+                Text {
+                    text: "Status";
+                    font-size: 18px;
+                    color: #888888;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: root.sta-connected ? root.sta-ssid + " (" + root.sta-ip + ")" : "Not connected";
+                    font-size: 18px;
+                    color: root.sta-connected ? #4caf50 : #ffffff;
+                    vertical-alignment: center;
+                }
+            }
+
+            Rectangle {
+                y: 47px;
+                width: parent.width;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+
+        // Connect to Network button
+        Rectangle {
+            height: 56px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                alignment: space-between;
+
+                Text {
+                    text: "Connect to Network";
+                    font-size: 18px;
+                    color: #cccccc;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "\u{203A}";
+                    font-size: 24px;
+                    color: #555580;
+                    vertical-alignment: center;
+                }
+            }
+
+            TouchArea {
+                clicked => {
+                    root.open-wifi-connect();
+                }
+            }
+
+            Rectangle {
+                y: 55px;
+                width: parent.width;
+                height: 1px;
+                background: #2a2a4a;
+            }
+        }
+    }
+}
+
+// --- WiFi Connect Page (scan, select, enter password, connect) ---
+export struct ScanResult {
+    ssid: string,
+    rssi: int,
+    secure: bool,
+}
+
+component WiFiConnectPage inherits Rectangle {
+    in property <bool> sta-connected: false;
+    in property <string> sta-ssid: "";
+    in property <bool> scanning: false;
+    in property <[ScanResult]> scan-results: [];
+    in property <string> connect-status: "";
+
+    // Currently selected SSID and whether it requires a password
+    in-out property <string> selected-ssid: "";
+    in-out property <bool> selected-secure: false;
+
+    callback go-back();
+    callback wifi-scan();
+    callback wifi-connect(/* ssid */ string, /* password */ string);
+    callback wifi-disconnect();
+    callback wifi-forget();
+
+    background: #1a1a2e;
+
+    // Header bar
+    PageHeader {
+        x: 0px;
+        y: 0px;
+        width: parent.width;
+        title: "Connect to Network";
+        go-back => { root.go-back(); }
+    }
+
+    // Content area
+    VerticalLayout {
+        y: 62px;
+        x: 20px;
+        width: parent.width - 40px;
+        spacing: 0px;
+
+        // Scan button + status row
+        Rectangle {
+            height: 52px;
+            background: transparent;
+
+            HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                alignment: space-between;
+
+                Text {
+                    text: root.scanning ? "Scanning..." : root.connect-status != "" ? root.connect-status : "Tap Scan to find networks";
+                    font-size: 16px;
+                    color: #888888;
+                    vertical-alignment: center;
+                }
+
+                // Scan button
+                Rectangle {
+                    width: 80px;
+                    height: 36px;
+                    border-radius: 6px;
+                    background: root.scanning ? #333355 : #1b4f72;
+
+                    Text {
+                        text: "Scan";
+                        font-size: 16px;
+                        font-weight: 600;
+                        color: root.scanning ? #666666 : #ffffff;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    TouchArea {
+                        enabled: !root.scanning;
+                        clicked => {
+                            root.wifi-scan();
+                        }
+                    }
+                }
+            }
+
             Rectangle {
                 y: 51px;
                 width: parent.width;
                 height: 1px;
                 background: #2a2a4a;
+            }
+        }
+
+        // Scan results list (scrollable)
+        Rectangle {
+            height: root.selected-ssid != "" ? 160px : 280px;
+            background: transparent;
+
+            Flickable {
+                width: parent.width;
+                height: parent.height;
+                viewport-height: scan-list.preferred-height;
+
+                scan-list := VerticalLayout {
+                    spacing: 0px;
+
+                    for ap in root.scan-results: Rectangle {
+                        height: 44px;
+                        background: ap.ssid == root.selected-ssid ? #2a2a5a : transparent;
+
+                        HorizontalLayout {
+                            padding-left: 16px;
+                            padding-right: 16px;
+                            spacing: 8px;
+                            alignment: start;
+
+                            // Signal strength icon
+                            Rectangle {
+                                width: 24px;
+                                height: 24px;
+
+                                Image {
+                                    visible: ap.rssi > -60;
+                                    source: @image-url("../images/icons/wifi-high.png");
+                                    width: 20px;
+                                    height: 20px;
+                                    x: 2px;
+                                    y: 2px;
+                                    image-fit: contain;
+                                }
+
+                                Image {
+                                    visible: ap.rssi > -75 && ap.rssi <= -60;
+                                    source: @image-url("../images/icons/wifi-medium.png");
+                                    width: 20px;
+                                    height: 20px;
+                                    x: 2px;
+                                    y: 2px;
+                                    image-fit: contain;
+                                }
+
+                                Image {
+                                    visible: ap.rssi <= -75;
+                                    source: @image-url("../images/icons/wifi-low.png");
+                                    width: 20px;
+                                    height: 20px;
+                                    x: 2px;
+                                    y: 2px;
+                                    image-fit: contain;
+                                }
+                            }
+
+                            // SSID text
+                            Text {
+                                text: ap.ssid;
+                                font-size: 18px;
+                                color: #ffffff;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
+
+                            // Lock icon for secured networks
+                            if ap.secure: Image {
+                                source: @image-url("../images/icons/lock-simple.png");
+                                width: 16px;
+                                height: 16px;
+                                image-fit: contain;
+                            }
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.selected-ssid = ap.ssid;
+                                root.selected-secure = ap.secure;
+                            }
+                        }
+
+                        Rectangle {
+                            y: 43px;
+                            width: parent.width;
+                            height: 1px;
+                            background: #2a2a4a;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Password input + Connect button (visible when an AP is selected)
+        if root.selected-ssid != "": Rectangle {
+            height: 120px;
+            background: transparent;
+
+            VerticalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                spacing: 10px;
+
+                // Selected network label
+                Text {
+                    text: "Connect to: " + root.selected-ssid;
+                    font-size: 16px;
+                    font-weight: 600;
+                    color: #cccccc;
+                }
+
+                // Password input (only for secured networks)
+                Rectangle {
+                    visible: root.selected-secure;
+                    height: root.selected-secure ? 40px : 0px;
+                    border-radius: 6px;
+                    background: #111122;
+                    border-width: root.selected-secure ? 1px : 0px;
+                    border-color: #3a3a5a;
+
+                    password-input := TextInput {
+                        x: 12px;
+                        y: 0px;
+                        width: parent.width - 24px;
+                        height: parent.height;
+                        font-size: 18px;
+                        color: #ffffff;
+                        input-type: password;
+                    }
+                }
+
+                // Buttons row
+                HorizontalLayout {
+                    spacing: 12px;
+                    alignment: start;
+
+                    // Connect button
+                    Rectangle {
+                        width: 120px;
+                        height: 40px;
+                        border-radius: 6px;
+                        background: #1b4f72;
+
+                        Text {
+                            text: "Connect";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #ffffff;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.wifi-connect(root.selected-ssid, root.selected-secure ? password-input.text : "");
+                            }
+                        }
+                    }
+
+                    // Disconnect button (only when connected)
+                    if root.sta-connected: Rectangle {
+                        width: 120px;
+                        height: 40px;
+                        border-radius: 6px;
+                        background: #4a2020;
+
+                        Text {
+                            text: "Disconnect";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #ffffff;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.wifi-disconnect();
+                            }
+                        }
+                    }
+
+                    // Forget button (only when connected)
+                    if root.sta-connected: Rectangle {
+                        width: 100px;
+                        height: 40px;
+                        border-radius: 6px;
+                        background: #3a2020;
+
+                        Text {
+                            text: "Forget";
+                            font-size: 16px;
+                            font-weight: 600;
+                            color: #ff6666;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                root.wifi-forget();
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -750,8 +1158,18 @@ export component BadgeUI inherits Window {
     in-out property <string> sta-ssid: "";
     in-out property <string> sta-ip: "";
     in-out property <bool> has-wifi-credentials: false;
+    in-out property <bool> wifi-scanning: false;
+    in-out property <[ScanResult]> wifi-scan-results: [];
+    in-out property <string> wifi-connect-status: "";
+    // Toast notification
+    in-out property <string> toast-message: "";
+    in-out property <bool> toast-visible: false;
 
     callback brightness-changed(float);
+    callback wifi-scan();
+    callback wifi-connect(/* ssid */ string, /* password */ string);
+    callback wifi-disconnect();
+    callback wifi-forget();
 
     // Badge page
     badge := BadgePage {
@@ -811,9 +1229,48 @@ export component BadgeUI inherits Window {
         height: parent.height;
         connected-clients: root.wifi-clients;
         ip-address: root.wifi-ip;
+        sta-connected: root.sta-connected;
+        sta-ssid: root.sta-ssid;
+        sta-ip: root.sta-ip;
 
         go-back => {
             root.current-page = 1;
+        }
+
+        open-wifi-connect => {
+            root.current-page = 5;
+        }
+    }
+
+    // WiFi connect page (scan, password, connect)
+    wifi-connect-page := WiFiConnectPage {
+        visible: root.current-page == 5;
+        width: parent.width;
+        height: parent.height;
+        sta-connected: root.sta-connected;
+        sta-ssid: root.sta-ssid;
+        scanning: root.wifi-scanning;
+        scan-results: root.wifi-scan-results;
+        connect-status: root.wifi-connect-status;
+
+        go-back => {
+            root.current-page = 2;
+        }
+
+        wifi-scan => {
+            root.wifi-scan();
+        }
+
+        wifi-connect(ssid, password) => {
+            root.wifi-connect(ssid, password);
+        }
+
+        wifi-disconnect => {
+            root.wifi-disconnect();
+        }
+
+        wifi-forget => {
+            root.wifi-forget();
         }
     }
 
@@ -841,6 +1298,25 @@ export component BadgeUI inherits Window {
 
         go-back => {
             root.current-page = 1;
+        }
+    }
+
+    // Toast notification overlay
+    Rectangle {
+        visible: root.toast-visible;
+        x: (parent.width - 400px) / 2;
+        y: parent.height - 60px;
+        width: 400px;
+        height: 40px;
+        border-radius: 8px;
+        background: #333355;
+
+        Text {
+            text: root.toast-message;
+            font-size: 16px;
+            color: #ffffff;
+            horizontal-alignment: center;
+            vertical-alignment: center;
         }
     }
 

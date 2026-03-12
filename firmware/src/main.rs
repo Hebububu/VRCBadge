@@ -94,7 +94,7 @@ fn main() -> anyhow::Result<()> {
     // --- Persistent storage (NVS + SPIFFS) ---
     let nvs_partition = EspDefaultNvsPartition::take()?;
     let nvs_for_storage = nvs_partition.clone(); // clone before WiFi consumes it
-    let mut nvs = storage::init_nvs(nvs_for_storage)?;
+    let nvs = std::rc::Rc::new(RefCell::new(storage::init_nvs(nvs_for_storage)?));
     storage::init_spiffs()?;
 
     // --- WiFi AP + HTTP server ---
@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
     dns::start(ap_ip)?;
     let pending_background: web::SharedImageData = Arc::new(Mutex::new(None));
     let pending_avatar: web::SharedImageData = Arc::new(Mutex::new(None));
-    let saved_profile = storage::load_profile(&nvs).unwrap_or_default();
+    let saved_profile = storage::load_profile(&nvs.borrow()).unwrap_or_default();
     let current_profile: profile::CurrentProfile = Arc::new(Mutex::new(saved_profile.clone()));
     let pending_profile: profile::PendingProfile = Arc::new(Mutex::new(None));
     let _server = web::init(
@@ -215,7 +215,7 @@ fn main() -> anyhow::Result<()> {
     {
         let weak = ui.as_weak();
         ui.global::<VirtualKeyboardHandler>()
-            .on_key_pressed(move |key| {
+            .on_key_pressed(move |key: slint::SharedString| {
                 if let Some(ui) = weak.upgrade() {
                     ui.window()
                         .dispatch_event(slint::platform::WindowEvent::KeyPressed {
@@ -227,11 +227,115 @@ fn main() -> anyhow::Result<()> {
             });
     }
 
+    // --- WiFi UI callbacks ---
+    // Scan for nearby networks
+    {
+        let weak = ui.as_weak();
+        let wifi = wifi_handle.clone();
+        ui.on_wifi_scan(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_wifi_scanning(true);
+            ui.set_wifi_connect_status("".into());
+
+            let results = if let Ok(mut wifi) = wifi.lock() {
+                wifi::scan(&mut wifi).unwrap_or_default()
+            } else {
+                Vec::new()
+            };
+
+            let model: Vec<ScanResult> = results
+                .iter()
+                .map(|ap| ScanResult {
+                    ssid: ap.ssid.clone().into(),
+                    rssi: ap.rssi as i32,
+                    secure: ap.auth_required,
+                })
+                .collect();
+
+            let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
+            ui.set_wifi_scan_results(model_rc.into());
+            ui.set_wifi_scanning(false);
+        });
+    }
+
+    // Connect to a WiFi network
+    {
+        let weak = ui.as_weak();
+        let wifi = wifi_handle.clone();
+        let nvs_clone = nvs.clone();
+        ui.on_wifi_connect(move |ssid, password| {
+            let Some(ui) = weak.upgrade() else { return };
+            ui.set_wifi_connect_status("Connecting...".into());
+
+            let result = if let Ok(mut wifi) = wifi.lock() {
+                wifi::connect_sta(&mut wifi, ssid.as_str(), password.as_str())
+            } else {
+                Err(anyhow::anyhow!("WiFi lock failed"))
+            };
+
+            match result {
+                Ok(ip) => {
+                    ui.set_sta_connected(true);
+                    ui.set_sta_ssid(ssid.clone());
+                    ui.set_sta_ip(ip.to_string().into());
+                    ui.set_has_wifi_credentials(true);
+                    ui.set_wifi_connect_status("Connected".into());
+                    storage::save_wifi_credentials(
+                        &mut nvs_clone.borrow_mut(),
+                        ssid.as_str(),
+                        password.as_str(),
+                    );
+                }
+                Err(e) => {
+                    ui.set_sta_connected(false);
+                    ui.set_wifi_connect_status(format!("Failed: {e}").into());
+                }
+            }
+        });
+    }
+
+    // Disconnect from WiFi station
+    {
+        let weak = ui.as_weak();
+        let wifi = wifi_handle.clone();
+        ui.on_wifi_disconnect(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            if let Ok(mut wifi) = wifi.lock() {
+                let _ = wifi::disconnect_sta(&mut wifi);
+            }
+            ui.set_sta_connected(false);
+            ui.set_sta_ssid("".into());
+            ui.set_sta_ip("".into());
+            ui.set_wifi_connect_status("Disconnected".into());
+        });
+    }
+
+    // Forget saved WiFi credentials
+    {
+        let weak = ui.as_weak();
+        let wifi = wifi_handle.clone();
+        let nvs_clone = nvs.clone();
+        ui.on_wifi_forget(move || {
+            let Some(ui) = weak.upgrade() else { return };
+            // Disconnect first
+            if let Ok(mut wifi) = wifi.lock() {
+                let _ = wifi::disconnect_sta(&mut wifi);
+            }
+            // Delete credentials from NVS
+            storage::delete_wifi_credentials(&mut nvs_clone.borrow_mut());
+            ui.set_sta_connected(false);
+            ui.set_sta_ssid("".into());
+            ui.set_sta_ip("".into());
+            ui.set_has_wifi_credentials(false);
+            ui.set_wifi_connect_status("Credentials forgotten".into());
+        });
+    }
+
     // --- Auto-connect to saved WiFi network (background, non-blocking) ---
     // Try to connect at boot if credentials are saved. On failure, continue
     // with AP-only mode and show a dimmed WiFi icon.
     let mut sta_connected = false;
-    if let Some((ssid, password)) = storage::load_wifi_credentials(&nvs) {
+    if let Some((ssid, password)) = storage::load_wifi_credentials(&nvs.borrow()) {
         log::info!("Auto-connecting to saved WiFi: {ssid}");
         if let Ok(mut wifi) = wifi_handle.lock() {
             match wifi::connect_sta(&mut wifi, &ssid, &password) {
@@ -244,19 +348,26 @@ fn main() -> anyhow::Result<()> {
                 Err(e) => {
                     log::warn!("Auto-connect failed: {e}");
                     ui.set_sta_connected(false);
-                    // Show toast: will be handled in Stage 3
+                    ui.set_toast_message("WiFi connection failed".into());
+                    ui.set_toast_visible(true);
                 }
             }
         }
     }
     // Track whether we have saved credentials (for dimmed icon vs hidden)
-    let has_wifi_credentials = storage::load_wifi_credentials(&nvs).is_some();
+    let has_wifi_credentials = storage::load_wifi_credentials(&nvs.borrow()).is_some();
     ui.set_has_wifi_credentials(has_wifi_credentials || sta_connected);
 
     log::info!("Boot complete, entering main loop");
 
     // --- Main event loop ---
     let mut loop_count: u32 = 0;
+    // Toast auto-hide: track when the toast was shown so we can clear it after 5 seconds.
+    let mut toast_shown_at: Option<Instant> = if ui.get_toast_visible() {
+        Some(Instant::now())
+    } else {
+        None
+    };
     loop {
         // 1. Process Slint timers and animations
         slint::platform::update_timers_and_animations();
@@ -295,6 +406,15 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
+            // Toast auto-hide after 5 seconds
+            if let Some(shown_at) = toast_shown_at {
+                if shown_at.elapsed() >= std::time::Duration::from_secs(5) {
+                    ui.set_toast_visible(false);
+                    ui.set_toast_message("".into());
+                    toast_shown_at = None;
+                }
+            }
+
             // About page: system info + logs
             ui.set_about_uptime(sysinfo::uptime_string(&boot_time).into());
             ui.set_about_heap(format!("{} KB", sysinfo::free_heap_kb()).into());
@@ -313,7 +433,7 @@ fn main() -> anyhow::Result<()> {
                     if let Ok(mut current) = current_profile.try_lock() {
                         *current = new_profile.clone();
                     }
-                    storage::save_profile(&mut nvs, &new_profile);
+                    storage::save_profile(&mut nvs.borrow_mut(), &new_profile);
                     log::info!("Badge profile updated");
                 }
             }

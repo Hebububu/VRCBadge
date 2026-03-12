@@ -83,7 +83,7 @@ pub fn scan(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<Vec<Sca
         .map(|ap| ScannedAp {
             ssid: ap.ssid.to_string(),
             rssi: ap.signal_strength,
-            auth_required: ap.auth_method != AuthMethod::None,
+            auth_required: ap.auth_method != Some(AuthMethod::None),
         })
         .collect();
 
