@@ -2,7 +2,7 @@
 //!
 //! The ST7262 uses the ESP32-S3's built-in LCD_CAM peripheral in 16-bit RGB565
 //! parallel mode. The hardware continuously DMA-refreshes the display from a
-//! framebuffer in PSRAM at the pixel clock rate (~16MHz, ~39 FPS).
+//! framebuffer in PSRAM at the pixel clock rate (~21MHz, ~51 FPS).
 //!
 //! Unlike SPI displays, there are no commands to send — we just write pixels
 //! to the framebuffer and the hardware handles the rest.
@@ -113,8 +113,9 @@ const DATA_PINS: [i32; 16] = [
 // ---------------------------------------------------------------------------
 
 /// Pixel clock frequency in Hz.
-/// 16MHz gives ~39 FPS with the standard porch values.
-const PIXEL_CLOCK_HZ: u32 = 16_000_000;
+/// 21MHz gives ~51 FPS with the standard porch values.
+/// The ST7262 panel supports up to ~25MHz; 21MHz is a safe sweet spot.
+const PIXEL_CLOCK_HZ: u32 = 21_000_000;
 
 /// Horizontal/Vertical sync timing (symmetric 8/4/8 for this panel).
 const H_FRONT_PORCH: u32 = 8;
@@ -169,7 +170,7 @@ pub fn init() -> anyhow::Result<(RgbDisplay, &'static mut [Rgb565Pixel])> {
     // bit 5: bb_invalidate_cache = 1 (free cache lines after bounce buffer copy)
     let panel_flags: u32 = (1 << 2) | (1 << 5); // fb_in_psram + bb_invalidate_cache
 
-    // Bounce buffer: 10 scanlines = 8000 pixels.
+    // Bounce buffer: 10 scanlines = 8,000 pixels.
     // Two internal SRAM buffers (16KB each, 32KB total) are allocated by the driver.
     // DMA reads from these instead of PSRAM directly, eliminating bandwidth
     // contention with CPU/I2C/WiFi/flash that causes pixel drifting.
@@ -227,20 +228,4 @@ pub fn init() -> anyhow::Result<(RgbDisplay, &'static mut [Rgb565Pixel])> {
     );
 
     Ok((RgbDisplay { _panel: panel }, framebuffer))
-}
-
-/// No-op flush — bounce buffers handle cache coherency.
-///
-/// With bounce buffers enabled, the ESP-IDF RGB panel driver copies data from
-/// the PSRAM framebuffer to internal SRAM bounce buffers via an ISR, handling
-/// all cache synchronization internally. We no longer need manual
-/// `Cache_WriteBack_Addr` calls.
-///
-/// This function exists to keep the call site in main.rs unchanged, making it
-/// easy to swap back to manual flushing if we ever disable bounce buffers.
-pub fn flush_dirty_region(
-    _framebuffer: &[Rgb565Pixel],
-    _region: slint::platform::software_renderer::PhysicalRegion,
-) {
-    // Bounce buffer ISR handles PSRAM -> SRAM copy and cache sync automatically.
 }

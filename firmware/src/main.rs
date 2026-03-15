@@ -484,23 +484,22 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        // 4. Render into framebuffer and flush cache for dirty regions
-        // The RGB panel hardware continuously DMA-refreshes from the framebuffer.
-        // We just need to ensure our writes are visible to the DMA controller.
+        // 4. Render directly into the DMA framebuffer.
+        // The RGB panel hardware continuously DMA-refreshes from this buffer.
+        // Direct rendering gives the best performance (single PSRAM write pass).
         window.draw_if_needed(|renderer| {
-            let region = renderer.render(framebuffer, platform::DISPLAY_WIDTH as usize);
-            display::flush_dirty_region(framebuffer, region);
+            renderer.render(framebuffer, platform::DISPLAY_WIDTH as usize);
         });
 
         // 5. Sleep until next event needed
         if !window.has_active_animations() {
             if let Some(duration) = slint::platform::duration_until_next_timer_update() {
                 // Sleep for at most the duration, but wake periodically for touch polling
-                let sleep_ms = duration.as_millis().min(16) as u32; // Cap at ~60fps for touch
+                let sleep_ms = duration.as_millis().min(8) as u32; // Cap at ~120fps for touch
                 esp_idf_hal::delay::FreeRtos::delay_ms(sleep_ms);
             } else {
                 // No timers pending -- sleep briefly for touch responsiveness
-                esp_idf_hal::delay::FreeRtos::delay_ms(16);
+                esp_idf_hal::delay::FreeRtos::delay_ms(8);
             }
         }
     }
