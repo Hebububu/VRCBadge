@@ -70,12 +70,34 @@ pub fn init(
 
 /// Scan for nearby access points.
 ///
-/// The WiFi driver must already be started (AP mode is fine).
+/// Scanning requires the STA interface to be active. If the WiFi is in
+/// AP-only mode, this temporarily switches to Mixed mode for the scan
+/// and reverts afterwards. If already in Mixed mode (STA connected or
+/// previously configured), the scan runs directly.
+///
 /// Returns up to 20 APs sorted by signal strength (strongest first).
 pub fn scan(wifi: &mut BlockingWifi<EspWifi<'static>>) -> anyhow::Result<Vec<ScannedAp>> {
     log::info!("Starting WiFi scan...");
 
-    let scan_result = wifi.scan()?;
+    // Scanning requires the STA interface. If we're in AP-only mode,
+    // temporarily switch to Mixed mode with a dummy STA config.
+    let was_ap_only = matches!(wifi.get_configuration()?, Configuration::AccessPoint(_));
+
+    if was_ap_only {
+        let dummy_sta = ClientConfiguration::default();
+        wifi.set_configuration(&Configuration::Mixed(dummy_sta, ap_config()))?;
+        wifi.stop()?;
+        wifi.start()?;
+    }
+
+    let scan_result = wifi.scan();
+
+    // Revert to AP-only if we switched (even if scan failed)
+    if was_ap_only {
+        let _ = revert_to_ap_only(wifi);
+    }
+
+    let scan_result = scan_result?;
 
     let mut aps: Vec<ScannedAp> = scan_result
         .into_iter()
