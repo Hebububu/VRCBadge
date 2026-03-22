@@ -660,6 +660,8 @@ component WiFiPage inherits Rectangle {
                     font-size: 18px;
                     color: root.sta-connected ? #4caf50 : #ffffff;
                     vertical-alignment: center;
+                    overflow: elide;
+                    max-width: 400px;
                 }
             }
 
@@ -729,6 +731,8 @@ component WiFiConnectPage inherits Rectangle {
     // Currently selected SSID and whether it requires a password
     in-out property <string> selected-ssid: "";
     in-out property <bool> selected-secure: false;
+    // Password value — exposed so it can be reset from outside the conditional block
+    in-out property <string> password-value: "";
 
     callback go-back();
     callback wifi-scan();
@@ -769,6 +773,8 @@ component WiFiConnectPage inherits Rectangle {
                     font-size: 16px;
                     color: #888888;
                     vertical-alignment: center;
+                    overflow: elide;
+                    horizontal-stretch: 1;
                 }
 
                 // Scan button
@@ -804,12 +810,29 @@ component WiFiConnectPage inherits Rectangle {
             }
         }
 
-        // Scan results list (scrollable)
+        // Scan results list (scrollable).
+        // Hidden when the virtual keyboard is open — the user has already
+        // selected an AP, so hiding the list keeps the password field and
+        // action buttons visible above the keyboard.
         Rectangle {
-            height: root.selected-ssid != "" ? 160px : 280px;
+            height: TextInputInterface.text-input-focused ? 0px :
+                    root.selected-ssid != "" ? 160px : 280px;
+            visible: !TextInputInterface.text-input-focused;
             background: transparent;
 
+            // Empty state — shown when no scan results and not scanning
+            if root.scan-results.length == 0 && !root.scanning: Text {
+                width: parent.width;
+                height: parent.height;
+                text: root.connect-status == "" ? "Tap Scan to find networks" : "No networks found";
+                font-size: 16px;
+                color: #555580;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+            }
+
             Flickable {
+                visible: root.scan-results.length > 0;
                 width: parent.width;
                 height: parent.height;
                 viewport-height: scan-list.preferred-height;
@@ -885,6 +908,8 @@ component WiFiConnectPage inherits Rectangle {
                             clicked => {
                                 root.selected-ssid = ap.ssid;
                                 root.selected-secure = ap.secure;
+                                // Clear password when selecting a different AP
+                                root.password-value = "";
                             }
                         }
 
@@ -915,6 +940,7 @@ component WiFiConnectPage inherits Rectangle {
                     font-size: 16px;
                     font-weight: 600;
                     color: #cccccc;
+                    overflow: elide;
                 }
 
                 // Password input (only for secured networks)
@@ -934,6 +960,17 @@ component WiFiConnectPage inherits Rectangle {
                         font-size: 18px;
                         color: #ffffff;
                         input-type: password;
+                        text <=> root.password-value;
+
+                        // Allow Escape key to defocus this TextInput (hides keyboard)
+                        key-pressed(event) => {
+                            if (event.text == Key.Escape) {
+                                self.clear-focus();
+                                accept
+                            } else {
+                                reject
+                            }
+                        }
                     }
                 }
 
@@ -942,31 +979,34 @@ component WiFiConnectPage inherits Rectangle {
                     spacing: 12px;
                     alignment: start;
 
-                    // Connect button
-                    Rectangle {
+                    // Connect button (disabled while scanning or missing password)
+                    connect-btn := Rectangle {
+                        property <bool> can-connect: !root.scanning
+                            && (!root.selected-secure || password-input.text != "");
                         width: 120px;
                         height: 40px;
                         border-radius: 6px;
-                        background: #1b4f72;
+                        background: connect-btn.can-connect ? #1b4f72 : #333355;
 
                         Text {
                             text: "Connect";
                             font-size: 16px;
                             font-weight: 600;
-                            color: #ffffff;
+                            color: connect-btn.can-connect ? #ffffff : #666666;
                             horizontal-alignment: center;
                             vertical-alignment: center;
                         }
 
                         TouchArea {
+                            enabled: connect-btn.can-connect;
                             clicked => {
                                 root.wifi-connect(root.selected-ssid, root.selected-secure ? password-input.text : "");
                             }
                         }
                     }
 
-                    // Disconnect button (only when connected)
-                    if root.sta-connected: Rectangle {
+                    // Disconnect button (only when selected AP is the connected one)
+                    if root.sta-connected && root.sta-ssid == root.selected-ssid: Rectangle {
                         width: 120px;
                         height: 40px;
                         border-radius: 6px;
@@ -988,8 +1028,8 @@ component WiFiConnectPage inherits Rectangle {
                         }
                     }
 
-                    // Forget button (only when connected)
-                    if root.sta-connected: Rectangle {
+                    // Forget button (only when selected AP is the connected one)
+                    if root.sta-connected && root.sta-ssid == root.selected-ssid: Rectangle {
                         width: 100px;
                         height: 40px;
                         border-radius: 6px;
@@ -1239,6 +1279,10 @@ export component BadgeUI inherits Window {
 
         open-wifi-connect => {
             root.current-page = 5;
+            wifi-connect-page.selected-ssid = "";
+            wifi-connect-page.selected-secure = false;
+            wifi-connect-page.password-value = "";
+            root.wifi-connect-status = "";
         }
     }
 
@@ -1258,6 +1302,11 @@ export component BadgeUI inherits Window {
         }
 
         wifi-scan => {
+            // Clear stale selection when starting a new scan
+            wifi-connect-page.selected-ssid = "";
+            wifi-connect-page.selected-secure = false;
+            wifi-connect-page.password-value = "";
+            root.wifi-connect-status = "";
             root.wifi-scan();
         }
 
@@ -1271,6 +1320,10 @@ export component BadgeUI inherits Window {
 
         wifi-forget => {
             root.wifi-forget();
+            // Clear selection after forgetting credentials
+            wifi-connect-page.selected-ssid = "";
+            wifi-connect-page.selected-secure = false;
+            wifi-connect-page.password-value = "";
         }
     }
 

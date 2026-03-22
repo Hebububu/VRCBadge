@@ -13,6 +13,22 @@ use std::cell::RefCell;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+/// Result of a background WiFi operation, polled by the main loop.
+enum WiFiOpResult {
+    /// No pending result.
+    Idle,
+    /// Scan completed with a list of APs.
+    ScanDone(Vec<wifi::ScannedAp>),
+    /// Connect succeeded: SSID, password (for NVS save), and IP.
+    ConnectOk {
+        ssid: String,
+        password: String,
+        ip: std::net::Ipv4Addr,
+    },
+    /// Connect failed with an error message.
+    ConnectFailed(String),
+}
+
 use esp_idf_hal::ledc::{config::TimerConfig, LedcDriver, LedcTimerDriver};
 use esp_idf_hal::peripherals::Peripherals;
 use esp_idf_hal::units::FromValueType;
@@ -228,69 +244,84 @@ fn main() -> anyhow::Result<()> {
     }
 
     // --- WiFi UI callbacks ---
-    // Scan for nearby networks
+    // Flag to dismiss virtual keyboard from main loop (dispatch_event
+    // doesn't reliably defocus TextInput when called inside a callback).
+    let dismiss_keyboard = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    // Shared state for background WiFi operations. The scan/connect callbacks
+    // spawn a thread that writes the result here; the main loop polls it and
+    // updates the UI (which must happen on the main thread).
+    let wifi_op_result: Arc<Mutex<WiFiOpResult>> = Arc::new(Mutex::new(WiFiOpResult::Idle));
+
+    // Scan for nearby networks (background thread)
     {
         let weak = ui.as_weak();
         let wifi = wifi_handle.clone();
+        let op_result = wifi_op_result.clone();
         ui.on_wifi_scan(move || {
-            let Some(ui) = weak.upgrade() else { return };
-            ui.set_wifi_scanning(true);
-            ui.set_wifi_connect_status("".into());
-
-            let results = if let Ok(mut wifi) = wifi.lock() {
-                wifi::scan(&mut wifi).unwrap_or_default()
-            } else {
-                Vec::new()
-            };
-
-            let model: Vec<ScanResult> = results
-                .iter()
-                .map(|ap| ScanResult {
-                    ssid: ap.ssid.clone().into(),
-                    rssi: ap.rssi as i32,
-                    secure: ap.auth_required,
+            // Update UI immediately on main thread
+            if let Some(ui) = weak.upgrade() {
+                ui.set_wifi_scanning(true);
+                ui.set_wifi_connect_status("".into());
+            }
+            let wifi = wifi.clone();
+            let op_result = op_result.clone();
+            std::thread::Builder::new()
+                .name("wifi-scan".into())
+                .stack_size(4096)
+                .spawn(move || {
+                    let results = if let Ok(mut wifi) = wifi.lock() {
+                        wifi::scan(&mut wifi).unwrap_or_default()
+                    } else {
+                        Vec::new()
+                    };
+                    if let Ok(mut op) = op_result.lock() {
+                        *op = WiFiOpResult::ScanDone(results);
+                    }
                 })
-                .collect();
-
-            let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
-            ui.set_wifi_scan_results(model_rc.into());
-            ui.set_wifi_scanning(false);
+                .ok();
         });
     }
 
-    // Connect to a WiFi network
+    // Connect to a WiFi network (background thread)
     {
         let weak = ui.as_weak();
         let wifi = wifi_handle.clone();
-        let nvs_clone = nvs.clone();
+        let op_result = wifi_op_result.clone();
         ui.on_wifi_connect(move |ssid, password| {
-            let Some(ui) = weak.upgrade() else { return };
-            ui.set_wifi_connect_status("Connecting...".into());
-
-            let result = if let Ok(mut wifi) = wifi.lock() {
-                wifi::connect_sta(&mut wifi, ssid.as_str(), password.as_str())
-            } else {
-                Err(anyhow::anyhow!("WiFi lock failed"))
-            };
-
-            match result {
-                Ok(ip) => {
-                    ui.set_sta_connected(true);
-                    ui.set_sta_ssid(ssid.clone());
-                    ui.set_sta_ip(ip.to_string().into());
-                    ui.set_has_wifi_credentials(true);
-                    ui.set_wifi_connect_status("Connected".into());
-                    storage::save_wifi_credentials(
-                        &mut nvs_clone.borrow_mut(),
-                        ssid.as_str(),
-                        password.as_str(),
-                    );
-                }
-                Err(e) => {
-                    ui.set_sta_connected(false);
-                    ui.set_wifi_connect_status(format!("Failed: {e}").into());
-                }
+            // Update UI immediately on main thread
+            if let Some(ui) = weak.upgrade() {
+                ui.set_wifi_connect_status("Connecting...".into());
             }
+            let wifi = wifi.clone();
+            let op_result = op_result.clone();
+            let ssid_str = ssid.to_string();
+            let password_str = password.to_string();
+            std::thread::Builder::new()
+                .name("wifi-conn".into())
+                .stack_size(4096)
+                .spawn(move || {
+                    let result = if let Ok(mut wifi) = wifi.lock() {
+                        wifi::connect_sta(&mut wifi, &ssid_str, &password_str)
+                    } else {
+                        Err(anyhow::anyhow!("WiFi lock failed"))
+                    };
+                    if let Ok(mut op) = op_result.lock() {
+                        match result {
+                            Ok(ip) => {
+                                *op = WiFiOpResult::ConnectOk {
+                                    ssid: ssid_str,
+                                    password: password_str,
+                                    ip,
+                                };
+                            }
+                            Err(e) => {
+                                *op = WiFiOpResult::ConnectFailed(format!("{e}"));
+                            }
+                        }
+                    }
+                })
+                .ok();
         });
     }
 
@@ -375,6 +406,50 @@ fn main() -> anyhow::Result<()> {
         // 2. Poll touch input -> dispatch events to Slint
         if let Some(ref mut touch) = touch {
             touch.poll(&window);
+        }
+
+        // 2b. Dismiss virtual keyboard if requested (deferred from callback)
+        if dismiss_keyboard.swap(false, std::sync::atomic::Ordering::Relaxed) {
+            window.dispatch_event(slint::platform::WindowEvent::KeyPressed {
+                text: slint::platform::Key::Escape.into(),
+            });
+            window.dispatch_event(slint::platform::WindowEvent::KeyReleased {
+                text: slint::platform::Key::Escape.into(),
+            });
+        }
+
+        // 2c. Poll background WiFi operation results
+        if let Ok(mut op) = wifi_op_result.try_lock() {
+            match std::mem::replace(&mut *op, WiFiOpResult::Idle) {
+                WiFiOpResult::Idle => {}
+                WiFiOpResult::ScanDone(results) => {
+                    let model: Vec<ScanResult> = results
+                        .iter()
+                        .map(|ap| ScanResult {
+                            ssid: ap.ssid.clone().into(),
+                            rssi: ap.rssi as i32,
+                            secure: ap.auth_required,
+                        })
+                        .collect();
+                    let model_rc = std::rc::Rc::new(slint::VecModel::from(model));
+                    ui.set_wifi_scan_results(model_rc.into());
+                    ui.set_wifi_scanning(false);
+                }
+                WiFiOpResult::ConnectOk { ssid, password, ip } => {
+                    ui.set_sta_connected(true);
+                    ui.set_sta_ssid(ssid.clone().into());
+                    ui.set_sta_ip(ip.to_string().into());
+                    ui.set_has_wifi_credentials(true);
+                    ui.set_wifi_connect_status("Connected".into());
+                    storage::save_wifi_credentials(&mut nvs.borrow_mut(), &ssid, &password);
+                    dismiss_keyboard.store(true, std::sync::atomic::Ordering::Relaxed);
+                    sta_connected = true;
+                }
+                WiFiOpResult::ConnectFailed(msg) => {
+                    ui.set_sta_connected(false);
+                    ui.set_wifi_connect_status(format!("Failed: {msg}").into());
+                }
+            }
         }
 
         // 3. Poll for updates (~every 2 seconds at 16ms sleep = 125 iterations)
