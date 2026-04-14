@@ -16,18 +16,19 @@ editable profile information (twitter, discord etc..), and future RFID door key 
 
 This project is inspired by Github Conference Badge video, posted by Wes Bos. [Ref Video](https://youtu.be/_jPm_zN95FE?si=vHjaHDR8lpRF7iKP)
 
-### Enclosure Redering (WIP)
+### Working Prototype
 
-<img src="./images/hardware/front.png" alt="Enclosure front" width="720">
-<img src="./images/hardware/back.png" alt="Enclosure back" width="720">
+<img src="./images/guiton_jc8048w550.jpg" alt="Badge running on Guition JC8048W550" width="720">
+
+Badge UI running on a Guition JC8048W550 dev board (ESP32-S3 + 4.8" RGB parallel LCD with capacitive touch). Built with [Slint](https://slint.dev).
+
+### Enclosure (WIP)
+
+<img src="./images/enclosure_wip.jpg" alt="Enclosure WIP" width="720">
+<img src="./images/hardware/front.png" alt="Enclosure front render" width="720">
+<img src="./images/hardware/back.png" alt="Enclosure back render" width="720">
 
 Enclosure drawn with Autodesk Fusion 360.
-
-### UI Preview
-
-<img src="./images/etc/slint_preview.png" alt="UI Preview" width="480">
-
-Badge UI built with [Slint](https://slint.dev).
 
 ### Schematic (Future)
 
